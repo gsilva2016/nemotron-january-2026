@@ -60,6 +60,7 @@ conda activate nemotron-s2s
 ```
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
 pip install uvicorn fastapi loguru websockets
+python -c "import torch; print(torch.xpu.is_available())"
 
 #intel-cmplr-lib-rt intel-cmplr-lib-ur intel-cmplr-lic-rt intel-sycl-rt pytorch-triton-xpu tcmlib umf intel-pti --index-url https://download.pytorch.org/whl/xpu --extra-index-url https://pypi.org/simple
 # --index-url https://download.pytorch.org/whl/xpu
@@ -101,7 +102,7 @@ docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/g
 ```
 
 - Verify llamacpp is running. You may have to wait 2-5 minutes for a valid response.
-- 
+
 ```
 curl 127.0.0.1:8000/health
 ```
