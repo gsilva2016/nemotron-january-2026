@@ -82,7 +82,7 @@ async def load_model(model_id: str = "nvidia/magpie_tts_multilingual_357m"):
                 os.environ["HF_TOKEN"] = hf_token
 
             model = MagpieTTSModel.from_pretrained(model_id)
-            model = model.to('xpu') #.cuda()
+            model = model.to('xpu').half() #.cuda()
             model.eval()
             return model
 
