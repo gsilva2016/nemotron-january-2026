@@ -45,6 +45,7 @@ conda create -n nemotron-s2s python=3.12 -y
 ```
 
 ```
+# Skip this step if using llamacpp instead
 conda create -n nemotron-vllm python=3.12 -y
 ```
 
@@ -77,7 +78,7 @@ cd ..
 
 - Pipecat 
 ```
-pip install pipecat-ai[silero,openai,cartesia,runner,daily,local-smart-turn-v3,webrtc]==0.0.98"
+pip install "pipecat-ai[silero,openai,cartesia,runner,daily,local-smart-turn-v3,webrtc]==0.0.98"
 pip install dotenv websockets aiortc opencv-python
 
 #pipecat-ai[webrtc]
@@ -95,13 +96,17 @@ huggingface-cli login --token $your_token_here
 ```
 # Ensure ./gguf_models directory exists
 huggingface-cli download unsloth/Llama-3.2-3B-Instruct-GGUF --include "Llama-3.2-3B-Instruct-F16.gguf" --local-dir ./gguf_models
-docker run -it --privileged --net host -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --run -c 4096 -m /models/Llama-3.2-3B-Instruct-F16.gguf
 
-# test non-server
-#docker run -it --net host -v `pwd`:/savedir ghcr.io/ggml-org/llama.cpp:full-intel
-# Test this - get_memory_info: [warning] ext_intel_free_memory is not supported (export/set #ZES_ENABLE_SYSMAN=1 to support), use total memory as free memory
-#docker run --privileged --net host -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --run-legacy -m /models/Llama-3.2-3B-Instruct-F16.gguf -c 4096 -no-cnv -p "Building a mobile app can be done in 15 steps:" -n 512
+docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel -c 4096 -m /models/Llama-3.2-3B-Instruct-F16.gguf
 ```
+
+- Verify llamacpp is running. You may have to wait 2-5 minutes for a valid response.
+- 
+```
+curl 127.0.0.1:8000/health
+```
+
+- Deactivate nemotron-s2s environment
 
 ```
 conda deactivate
@@ -132,6 +137,7 @@ Open a new terminal and ensure the current directory is nemotron-january-2026
 
 ```
 conda activate nemotron-s2s
+cd src
 python -m nemotron_speech.tts_server --port 8001
 ```
 
