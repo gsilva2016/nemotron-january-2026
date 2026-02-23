@@ -21,70 +21,10 @@ Accompanying blog posts:
 
 - Refer to the following https://dgpu-docs.intel.com/driver/client/overview.html#ubuntu-22.04 for Intel GPU support.
 
-- Execute the below steps if you need to install Conda for the first time. If Conda is installed then skip step.
+- Build Containers
 
 ```
-miniforge_script=Miniforge3-$(uname)-$(uname -m).sh
-[ -e $miniforge_script ] && rm $miniforge_script
-wget "https://github.com/conda-forge/miniforge/releases/latest/download/$miniforge_script"
-bash $miniforge_script -b -u
-CONDA_DIR=$HOME/miniforge3
-eval "$(${CONDA_DIR}/bin/conda shell.bash hook 2> /dev/null)"
-conda init
-```
-
-- FFMPEG
-```
-sudo apt install -y ffmpeg
-```
-
-- Create Python environments
-
-```
-conda create -n nemotron-s2s python=3.12 -y
-```
-
-```
-# Skip this step if using llamacpp instead
-conda create -n nemotron-vllm python=3.12 -y
-```
-
-- Install dependencies to Python environments
-
-```
-conda activate nemotron-s2s
-```
-
-- PyTorch + Intel XPU
-
-```
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
-pip install uvicorn fastapi loguru websockets
-python -c "import torch; print(torch.xpu.is_available())"
-
-#intel-cmplr-lib-rt intel-cmplr-lib-ur intel-cmplr-lic-rt intel-sycl-rt pytorch-triton-xpu tcmlib umf intel-pti --index-url https://download.pytorch.org/whl/xpu --extra-index-url https://pypi.org/simple
-# --index-url https://download.pytorch.org/whl/xpu
-```
-
-- NeMo
-
-```
-git clone https://github.com/NVIDIA-NeMo/NeMo.git
-cd NeMo
-git checkout 644201898480ec8c8d0a637f0c773825509ac4dc
-#pip install --no-cache Cython "hydra-core>=1.3.0" "omegaconf>=2.3" "pytorch-lightning>=2.0" "torchmetrics>=0.11.0" "transformers>=4.36.0" sentencepiece webdataset "lhotse>=1.20.0" braceexpand editdistance g2p_en inflect kaldi-python-io kaldiio "librosa>=0.10.0" marshmallow ruamel.yaml soundfile text-unidecode numba kaldialign
-pip install --no-cache -e ".[asr,tts,rtvi,all]"
-cd ..
-```
-
-- Pipecat 
-```
-pip install "pipecat-ai[silero,openai,cartesia,runner,daily,local-smart-turn-v3,webrtc]==0.0.98"
-pip install dotenv websockets aiortc opencv-python
-
-#pipecat-ai[webrtc]
-#pip install pipecat-ai[all] pipecat-ai-small-webrtc-prebuilt pipecat-ai[daily] pipecat-ai[runner]
-#pip install dotenv pipecat-ai[all] fastapi pipecat-ai[daily] pipecat-ai[runner] websockets aiortc opencv-python
+docker build -t nemotron-s2s -f Dockerfile.intel .
 ```
 
 - llamacpp for interleaved streaming support using Pytorch + Intel XPU 
@@ -94,10 +34,10 @@ pip install dotenv websockets aiortc opencv-python
 huggingface-cli login --token $your_token_here
 ```
 
-```
-# Ensure ./gguf_models directory exists
-huggingface-cli download unsloth/Llama-3.2-3B-Instruct-GGUF --include "Llama-3.2-3B-Instruct-F16.gguf" --local-dir ./gguf_models
+- Ensure ./gguf_models directory exists before performing the below steps
 
+```
+huggingface-cli download unsloth/Llama-3.2-3B-Instruct-GGUF --include "Llama-3.2-3B-Instruct-F16.gguf" --local-dir ./gguf_models
 docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel -c 4096 -m /models/Llama-3.2-3B-Instruct-F16.gguf
 ```
 
@@ -107,14 +47,9 @@ docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/g
 curl 127.0.0.1:8000/health
 ```
 
-- Deactivate nemotron-s2s environment
-
-```
-conda deactivate
-```
-
 - Skip vLLM + OpenVINO if using llamacpp instead
 ```
+conda create -n nemotron-vllm python=3.12 -y
 conda activate nemotron-vllm
 git clone https://github.com/vllm-project/vllm-openvino.git
 cd vllm-openvino
@@ -127,18 +62,24 @@ conda deactivate
 ### 1. Start ASR Service
 
 ```
+docker run -itd --privileged --net host -v `pwd`:/savedir nemotron-s2s
+```
+
+```
 conda activate nemotron-s2s
-cd src
-python -m nemotron_speech.server --port 8080
+cd /savedir/src
+python -m nemotron_speech.tts_server --port 8001
 ```
 
 ### 2. Start TTS Service
 
-Open a new terminal and ensure the current directory is nemotron-january-2026
+```
+docker run -itd --privileged --net host -v `pwd`:/savedir nemotron-s2s
+```
 
 ```
 conda activate nemotron-s2s
-cd src
+cd /savedir/src
 python -m nemotron_speech.tts_server --port 8001
 ```
 
@@ -159,12 +100,19 @@ python -m vllm.entrypoints.openai.api_server --model "meta-llama/Llama-3.2-3B-In
 
 ### 3. Pipecat WebUI DemoA
 
-Open a new terminal and ensure the current directory is nemotron-january-2026
+```
+docker run -itd --privileged --net host -v `pwd`:/savedir nemotron-s2s
+```
 
 ```
+cd /savedir
 conda activate nemotron-s2s
 python pipecat_bots/bot_interleaved_streaming.py
 ```
+
+### 4. Run the Voice Bott
+
+Open `http://localhost:7860/client` in your browser.
 
 ## Quick start - Run everything locally (DGX Spark or RTX 5090)
 
