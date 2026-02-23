@@ -136,7 +136,7 @@ def load_model():
     print("Loading Magpie TTS model...")
     start = time.time()
     model = MagpieTTSModel.from_pretrained("nvidia/magpie_tts_multilingual_357m")
-    model = model.cuda().eval()
+    model = model.eval() #.cuda().eval()
     print(f"Model loaded in {time.time() - start:.1f}s")
     return model
 
@@ -191,13 +191,13 @@ def test_streaming_inference(model, text: str, compare_batch: bool = False, pres
     # Compare with batch mode
     if compare_batch:
         print("\n[Batch Mode (for comparison)]")
-        torch.cuda.synchronize()
+        #torch.cuda.synchronize()
         start_batch = time.time()
 
         with torch.no_grad():
             audio, audio_len = model.do_tts(text, language="en", speaker_index=2)
 
-        torch.cuda.synchronize()
+        #torch.cuda.synchronize()
         batch_time = time.time() - start_batch
 
         batch_samples = audio.shape[-1] if audio.dim() > 1 else audio.shape[0]
@@ -255,7 +255,7 @@ def run_quality_comparison(model, text: str = "Hello, this is a quality comparis
 
     # First, generate tokens using batch mode and save them
     print("[Step 1: Generate tokens with batch inference]")
-    torch.cuda.synchronize()
+    #torch.cuda.synchronize()
     start = time.time()
 
     # We need to access infer_batch to get the tokens
@@ -282,11 +282,11 @@ def run_quality_comparison(model, text: str = "Hello, this is a quality comparis
 
     # Decode tokens with batch mode (reference)
     print("\n[Step 2: Batch decode all tokens at once (reference)]")
-    torch.cuda.synchronize()
+    #torch.cuda.synchronize()
     start = time.time()
     with torch.no_grad():
         ref_audio, ref_audio_len = model.codes_to_audio(predicted_codes, predicted_codes_lens)
-    torch.cuda.synchronize()
+    #torch.cuda.synchronize()
     batch_decode_time = time.time() - start
 
     ref_np = ref_audio.cpu().float().numpy().squeeze()
@@ -321,7 +321,7 @@ def run_quality_comparison(model, text: str = "Hello, this is a quality comparis
         overlap_buffer = None
         samples_per_frame = 1024
 
-        torch.cuda.synchronize()
+        #torch.cuda.synchronize()
         start = time.time()
         ttfb = None
 
@@ -345,7 +345,7 @@ def run_quality_comparison(model, text: str = "Hello, this is a quality comparis
                 chunk_audio, _ = model.codes_to_audio(chunk_tokens, chunk_lens)
 
                 if ttfb is None:
-                    torch.cuda.synchronize()
+                    #torch.cuda.synchronize()
                     ttfb = time.time() - start
 
                 # Extract new audio (skip overlap)
@@ -365,7 +365,7 @@ def run_quality_comparison(model, text: str = "Hello, this is a quality comparis
 
                 frame_idx = end_idx
 
-        torch.cuda.synchronize()
+        #torch.cuda.synchronize()
         total_time = time.time() - start
 
         # Combine chunks
@@ -538,9 +538,9 @@ def main():
     try:
         import torch
         print(f"PyTorch: {torch.__version__}")
-        print(f"CUDA: {torch.cuda.is_available()}")
-        if torch.cuda.is_available():
-            print(f"GPU: {torch.cuda.get_device_name(0)}")
+        #print(f"CUDA: {torch.cuda.is_available()}")
+        #if torch.cuda.is_available():
+        #    print(f"GPU: {torch.cuda.get_device_name(0)}")
     except ImportError:
         print("ERROR: PyTorch not available")
         sys.exit(1)
