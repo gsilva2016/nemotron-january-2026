@@ -125,7 +125,7 @@ class ASRServer:
             self.model = nemo_asr.models.ASRModel.from_pretrained(
                 self.model_name_or_path, map_location='cpu'
             )
-        self.model = self.model.cuda()
+        self.model = self.model.to('xpu') #.cuda()
 
         # Configure attention context for streaming
         logger.info(f"Setting att_context_size=[70, {self.right_context}] ({RIGHT_CONTEXT_OPTIONS.get(self.right_context, 'custom')})")
@@ -210,8 +210,8 @@ class ASRServer:
 
         # Run streaming inference to force all CUDA kernels to compile
         with torch.inference_mode():
-            audio_tensor = torch.from_numpy(warmup_audio).unsqueeze(0).cuda()
-            audio_len = torch.tensor([len(warmup_audio)], device='cuda')
+            audio_tensor = torch.from_numpy(warmup_audio).unsqueeze(0).to('xpu') #.cuda()
+            audio_len = torch.tensor([len(warmup_audio)], device='xpu')
 
             # Preprocess
             mel, mel_len = self.model.preprocessor(input_signal=audio_tensor, length=audio_len)
@@ -368,8 +368,8 @@ class ASRServer:
         """Process accumulated audio, extract new mel frames, run streaming inference."""
         try:
             # Preprocess ALL accumulated audio
-            audio_tensor = torch.from_numpy(session.accumulated_audio).unsqueeze(0).cuda()
-            audio_len = torch.tensor([len(session.accumulated_audio)], device='cuda')
+            audio_tensor = torch.from_numpy(session.accumulated_audio).unsqueeze(0).to('xpu') #.cuda()
+            audio_len = torch.tensor([len(session.accumulated_audio)], device='xpu')
 
             if DEBUG_ASR:
                 audio_hash = _hash_audio(session.accumulated_audio)
@@ -405,7 +405,8 @@ class ASRServer:
                     drop_extra = self.drop_extra
 
                 chunk_mel = mel[:, :, chunk_start:chunk_end]
-                chunk_len = torch.tensor([chunk_mel.shape[-1]], device='cuda')
+                # cuda
+                chunk_len = torch.tensor([chunk_mel.shape[-1]], device='xpu')
 
                 # Run streaming inference
                 (
@@ -580,8 +581,8 @@ class ASRServer:
                 return session.current_text
 
             # Preprocess ALL accumulated audio
-            audio_tensor = torch.from_numpy(session.accumulated_audio).unsqueeze(0).cuda()
-            audio_len = torch.tensor([len(session.accumulated_audio)], device='cuda')
+            audio_tensor = torch.from_numpy(session.accumulated_audio).unsqueeze(0).to('xpu') #.cuda()
+            audio_len = torch.tensor([len(session.accumulated_audio)], device='xpu')
 
             with torch.inference_mode():
                 mel, mel_len = self.model.preprocessor(
@@ -612,7 +613,8 @@ class ASRServer:
                     drop_extra = self.drop_extra
 
                 chunk_mel = mel[:, :, chunk_start:]
-                chunk_len = torch.tensor([chunk_mel.shape[-1]], device='cuda')
+                # cuda
+                chunk_len = torch.tensor([chunk_mel.shape[-1]], device='xpu')
 
                 (
                     session.pred_out_stream,

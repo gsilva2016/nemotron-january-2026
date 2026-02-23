@@ -82,7 +82,7 @@ async def load_model(model_id: str = "nvidia/magpie_tts_multilingual_357m"):
                 os.environ["HF_TOKEN"] = hf_token
 
             model = MagpieTTSModel.from_pretrained(model_id)
-            model = model.cuda()
+            model = model.to('xpu') #.cuda()
             model.eval()
             return model
 
@@ -119,7 +119,7 @@ async def lifespan(app: FastAPI):
             # Warm up batch path with long text to allocate peak memory
             logger.info(f"  Warming up batch inference ({len(warmup_text)} chars)...")
             _, _ = model.do_tts(warmup_text, language="en", speaker_index=2, apply_TN=False)
-            torch.cuda.synchronize()
+            torch.xpu.synchronize()
 
             # Warm up streaming path (with CFG enabled for quality)
             logger.info("  Warming up streaming inference...")
@@ -132,18 +132,18 @@ async def lifespan(app: FastAPI):
             streamer = StreamingMagpieTTS(model, config)
             for _ in streamer.synthesize_streaming(warmup_text, language="en", speaker_index=2):
                 pass
-            torch.cuda.synchronize()
+            torch.xpu.synchronize()
 
             # Release cached memory so LLM can load. The warmup pre-allocated peak
             # memory for TTS inference; now we free the cached intermediates while
             # keeping the model weights loaded.
-            torch.cuda.empty_cache()
+            torch.xpu.empty_cache()
             logger.info("  Released CUDA cache after warmup")
 
-    warmup_start = time.time()
-    await asyncio.to_thread(_warmup)
-    warmup_time = time.time() - warmup_start
-    logger.info(f"TTS warm-up complete in {warmup_time:.1f}s")
+    #warmup_start = time.time()
+    #await asyncio.to_thread(_warmup)
+    #warmup_time = time.time() - warmup_start
+    #logger.info(f"TTS warm-up complete in {warmup_time:.1f}s")
 
     # Start stream manager for adaptive streaming
     stream_manager = get_stream_manager()
@@ -169,7 +169,7 @@ class SpeechRequest(BaseModel):
     input: str
     voice: str = "aria"
     language: str = "en"
-    response_format: str = "pcm"  # pcm or wav
+    response_format: str = "pcm" # "pcm"  # pcm or wav
     speed: float = 1.0  # Not used, for OpenAI compatibility
 
 
@@ -384,7 +384,7 @@ async def websocket_tts_stream(websocket: WebSocket):
     # Default configuration
     voice = "aria"
     language = "en"
-    default_mode = "batch"
+    default_mode = "stream" #"batch" # "batch" # batch is choppy?
 
     # Segment queue: list of (text, mode, preset) tuples
     segment_queue: list[tuple[str, str, Optional[str]]] = []
@@ -569,6 +569,7 @@ async def websocket_tts_stream(websocket: WebSocket):
             msg_count += 1
 
             data = json.loads(message)
+
             msg_type = data.get("type")
 
             # Log every message with timing
@@ -608,6 +609,7 @@ async def websocket_tts_stream(websocket: WebSocket):
                 text = normalize_text(data.get("text", ""))
                 mode = data.get("mode", default_mode)
                 preset = data.get("preset")  # Only used for stream mode
+
 
                 # Check if we need a new stream (first text, or previous stream closed/done)
                 need_new_stream = (
@@ -705,8 +707,7 @@ async def websocket_tts_stream(websocket: WebSocket):
         if stream is not None:
             await stream_manager.remove_stream(stream.stream_id)
 
-
-def _generate_fade_out_tail(last_chunk: bytes, fade_ms: int = 20, sample_rate: int = MAGPIE_SAMPLE_RATE) -> bytes:
+def _generate_fade_out_tail(last_chunk: bytes, fade_ms: int = 10, sample_rate: int = MAGPIE_SAMPLE_RATE) -> bytes:
     """Generate a fade-out tail based on the last chunk's ending amplitude.
 
     Instead of modifying the last chunk (which would require buffering),
@@ -739,7 +740,6 @@ def _generate_fade_out_tail(last_chunk: bytes, fade_ms: int = 20, sample_rate: i
 
     return np.clip(fade_audio, -32768, 32767).astype(np.int16).tobytes()
 
-
 def _apply_fade_out(audio_bytes: bytes, fade_ms: int = 20, sample_rate: int = MAGPIE_SAMPLE_RATE) -> bytes:
     """Apply fade-out to the end of audio to mask HiFiGAN artifacts.
 
@@ -769,7 +769,7 @@ def _apply_fade_out(audio_bytes: bytes, fade_ms: int = 20, sample_rate: int = MA
     return np.clip(audio, -32768, 32767).astype(np.int16).tobytes()
 
 
-def _crossfade_to_silence(audio_bytes: bytes, crossfade_ms: int = 40, sample_rate: int = MAGPIE_SAMPLE_RATE) -> bytes:
+def _crossfade_to_silence(audio_bytes: bytes, crossfade_ms: int = 10, sample_rate: int = MAGPIE_SAMPLE_RATE) -> bytes:
     """Crossfade audio into silence, removing decoder artifacts.
 
     The Magpie decoder sometimes generates a "whoosh" artifact after speech ends -

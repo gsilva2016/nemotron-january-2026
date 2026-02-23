@@ -45,7 +45,7 @@ from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIObserver, RTVIPro
 from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
 from pipecat.transports.base_transport import BaseTransport, TransportParams
-from pipecat.transports.daily.transport import DailyParams
+#from pipecat.transports.daily.transport import DailyParams
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams
 
 # Import our custom local services
@@ -79,7 +79,7 @@ ENABLE_RECORDING = os.getenv("ENABLE_RECORDING", "false").lower() == "true"
 RECORDINGS_DIR = Path(__file__).parent.parent / "recordings"
 
 # VAD configuration - used by both VAD analyzer and V2V metrics
-VAD_STOP_SECS = 0.2
+VAD_STOP_SECS = 1 #0.2
 
 
 def ensure_recordings_dir() -> Path:
@@ -110,23 +110,23 @@ async def save_audio_file(audio: bytes, sample_rate: int, num_channels: int, fil
 
 # Transport configurations with VAD and SmartTurn analyzer
 transport_params = {
-    "daily": lambda: DailyParams(
-        audio_in_enabled=True,
-        audio_out_enabled=True,
-        vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=VAD_STOP_SECS)),
-        turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
-    ),
-    "twilio": lambda: FastAPIWebsocketParams(
-        audio_in_enabled=True,
-        audio_out_enabled=True,
-        vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=VAD_STOP_SECS)),
-        turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
-    ),
+#    "daily": lambda: DailyParams(
+#        audio_in_enabled=True,
+#        audio_out_enabled=True,
+#        vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=VAD_STOP_SECS)),
+#        turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
+#    ),
+#    "twilio": lambda: FastAPIWebsocketParams(
+#        audio_in_enabled=True,
+#        audio_out_enabled=True,
+#        vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=VAD_STOP_SECS)),
+#        turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
+#    ),
     "webrtc": lambda: TransportParams(
         audio_in_enabled=True,
         audio_out_enabled=True,
-        vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=VAD_STOP_SECS)),
-        turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
+        vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=VAD_STOP_SECS))
+        #turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
     ),
 }
 
@@ -153,7 +153,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         voice="aria",
         language="en",
         params=MagpieWebSocketTTSService.InputParams(
-            language="en",
+            #language="en",
             streaming_preset="conservative",
             use_adaptive_mode=True,
         ),
@@ -186,13 +186,12 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         {
             "role": "system",
             "content": (
-                "You are a helpful AI assistant running on an NVIDIA DGX Spark. "
-                "You are built with Nemotron Three Nano, a large language model developed by NVIDIA. "
+                "You are a helpful AI assistant."
                 "Your goal is to have a natural conversation with the user. "
                 "Keep your responses concise and conversational since they will be spoken aloud. "
                 "Avoid special characters. Use only simple, plain text sentences. "
-                "Always punctuate your responses using standard sentence punctuation: commas, periods, question marks, exclamation points, etc. "
-                "Always spell out numbers as words. "
+                #"Always punctuate your responses using standard sentence punctuation: commas, periods, question marks, exclamation points, etc. "
+                #"Always spell out numbers as words. "
             ),
         },
         {

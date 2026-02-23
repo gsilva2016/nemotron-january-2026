@@ -330,12 +330,16 @@ class LlamaCppBufferedLLMService(AIService):
     def _format_messages(self, messages: list) -> str:
         """Format messages as ChatML prompt with thinking disabled."""
         prompt_parts = []
+        prompt_parts.append("<|begin_of_text|>")
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
-            prompt_parts.append(f"<|im_start|>{role}\n{content}<|im_end|>")
+            prompt_parts.append(f"<|start_header_id|>{role}<|end_header_id|>{content}.<|eot_id|>")
+            #"<|start_header_id|>assistant<|end_header_id|>")
+            #prompt_parts.append(f"<|im_start|>{role}\n{content}<|im_end|>")
         # Always disable thinking for voice agents
-        prompt_parts.append("<|im_start|>assistant\n<think></think>")
+        #prompt_parts.append("<|im_start|>assistant\n<think></think>")
+        prompt_parts.append("<|start_header_id|>assistant<|end_header_id|>")
         return "\n".join(prompt_parts)
 
     def _estimate_tokens(self, msg: dict) -> int:
@@ -382,7 +386,6 @@ class LlamaCppBufferedLLMService(AIService):
         if len(kept_msgs) < len(messages):
             dropped = len(messages) - len(kept_msgs)
             logger.warning(f"Context limit: dropped {dropped} oldest messages")
-
         return kept_msgs
 
     async def _process_context(self, context: LLMContext):

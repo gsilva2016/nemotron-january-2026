@@ -7,11 +7,157 @@ This repo is sample code for building voice agents with three NVIDIA open source
   - Nemotron 3 Nano LLM
   - Magpie TTS (Preview)
 
-Run locally on an NVIDIA DGX Spark or RTX 5090. Or deploy to the cloud with Modal and Pipecat Cloud.
+Run locally on an NVIDIA DGX Spark, RTX 5090, Intel GPU. Or deploy to the cloud with Modal and Pipecat Cloud.
 
 Accompanying blog posts:
 - [Nemotron Speech ASR Open Source Model Launch Post](https://huggingface.co/blog/nvidia/nemotron-speech-asr-scaling-voice-agents)
 - [More About Voice Agent Architectures and This Agent's Design](https://www.daily.co/blog/building-voice-agents-with-nvidia-open-models/)
+
+## Quick start - Run everything locally (Intel iGPU or Intel dGPU)
+
+### Prequisites
+
+- Refer to the following https://docs.pytorch.org/docs/stable/notes/get_start_xpu.html for Intel XPU support in PyTorch.
+
+- Refer to the following https://dgpu-docs.intel.com/driver/client/overview.html#ubuntu-22.04 for Intel GPU support.
+
+- Execute the below steps if you need to install Conda for the first time. If Conda is installed then skip step.
+
+```
+miniforge_script=Miniforge3-$(uname)-$(uname -m).sh
+[ -e $miniforge_script ] && rm $miniforge_script
+wget "https://github.com/conda-forge/miniforge/releases/latest/download/$miniforge_script"
+bash $miniforge_script -b -u
+CONDA_DIR=$HOME/miniforge3
+eval "$(${CONDA_DIR}/bin/conda shell.bash hook 2> /dev/null)"
+conda init
+```
+
+- FFMPEG
+```
+sudo apt install -y ffmpeg
+```
+
+- Create Python environments
+
+```
+conda create -n nemotron-s2s python=3.12 -y
+```
+
+```
+conda create -n nemotron-vllm python=3.12 -y
+```
+
+- Install dependencies to Python environments
+
+```
+conda activate nemotron-s2s
+```
+
+- PyTorch + Intel XPU
+
+```
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+pip install uvicorn fastapi loguru websockets
+
+#intel-cmplr-lib-rt intel-cmplr-lib-ur intel-cmplr-lic-rt intel-sycl-rt pytorch-triton-xpu tcmlib umf intel-pti --index-url https://download.pytorch.org/whl/xpu --extra-index-url https://pypi.org/simple
+# --index-url https://download.pytorch.org/whl/xpu
+```
+
+- NeMo
+
+```
+git clone https://github.com/NVIDIA-NeMo/NeMo.git
+cd NeMo
+git checkout 644201898480ec8c8d0a637f0c773825509ac4dc
+#pip install --no-cache Cython "hydra-core>=1.3.0" "omegaconf>=2.3" "pytorch-lightning>=2.0" "torchmetrics>=0.11.0" "transformers>=4.36.0" sentencepiece webdataset "lhotse>=1.20.0" braceexpand editdistance g2p_en inflect kaldi-python-io kaldiio "librosa>=0.10.0" marshmallow ruamel.yaml soundfile text-unidecode numba kaldialign
+pip install --no-cache -e ".[asr,tts,rtvi,all]"
+cd ..
+```
+
+- Pipecat 
+```
+pip install pipecat-ai[silero,openai,cartesia,runner,daily,local-smart-turn-v3,webrtc]==0.0.98"
+pip install dotenv websockets aiortc opencv-python
+
+#pipecat-ai[webrtc]
+#pip install pipecat-ai[all] pipecat-ai-small-webrtc-prebuilt pipecat-ai[daily] pipecat-ai[runner]
+#pip install dotenv pipecat-ai[all] fastapi pipecat-ai[daily] pipecat-ai[runner] websockets aiortc opencv-python
+```
+
+- llamacpp for interleaved streaming support using Pytorch + Intel XPU 
+
+```
+# Add your token
+huggingface-cli login --token $your_token_here
+```
+
+```
+# Ensure ./gguf_models directory exists
+huggingface-cli download unsloth/Llama-3.2-3B-Instruct-GGUF --include "Llama-3.2-3B-Instruct-F16.gguf" --local-dir ./gguf_models
+docker run -it --privileged --net host -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --run -c 4096 -m /models/Llama-3.2-3B-Instruct-F16.gguf
+
+# test non-server
+#docker run -it --net host -v `pwd`:/savedir ghcr.io/ggml-org/llama.cpp:full-intel
+# Test this - get_memory_info: [warning] ext_intel_free_memory is not supported (export/set #ZES_ENABLE_SYSMAN=1 to support), use total memory as free memory
+#docker run --privileged --net host -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --run-legacy -m /models/Llama-3.2-3B-Instruct-F16.gguf -c 4096 -no-cnv -p "Building a mobile app can be done in 15 steps:" -n 512
+```
+
+```
+conda deactivate
+```
+
+- Skip vLLM + OpenVINO if using llamacpp instead
+```
+conda activate nemotron-vllm
+git clone https://github.com/vllm-project/vllm-openvino.git
+cd vllm-openvino
+VLLM_TARGET_DEVICE="GPU" PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cpu" python -m pip install -v .
+cd ..
+pip uninstall triton -y
+conda deactivate
+```
+
+### 1. Start ASR Service
+
+```
+conda activate nemotron-s2s
+cd src
+python -m nemotron_speech.server --port 8080
+```
+
+### 2. Start TTS Service
+
+Open a new terminal and ensure the current directory is nemotron-january-2026
+
+```
+conda activate nemotron-s2s
+python -m nemotron_speech.tts_server --port 8001
+```
+
+### 3. (Optional - Skip if using llamacpp above) Start vLLM Service
+
+Open a new terminal and ensure the current directory is nemotron-january-2026. Ensure you set mytoken below.
+
+- Login to HuggingFace
+```
+huggingface-cli login --token $mytoken
+```
+
+- Start vLLM
+```
+conda activate nemotron-vllm
+python -m vllm.entrypoints.openai.api_server --model "meta-llama/Llama-3.2-3B-Instruct" --host 0.0.0.0 --port 8000 --dtype float16 --trust-remote-code  --max-num-seqs 1 --max-model-len "4096" --enforce-eager --disable-log-requests --enable-prefix-caching
+```
+
+### 3. Pipecat WebUI DemoA
+
+Open a new terminal and ensure the current directory is nemotron-january-2026
+
+```
+conda activate nemotron-s2s
+python pipecat_bots/bot_interleaved_streaming.py
+```
 
 ## Quick start - Run everything locally (DGX Spark or RTX 5090)
 
