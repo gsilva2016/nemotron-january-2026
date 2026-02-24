@@ -82,7 +82,8 @@ python -m nemotron_speech.server --port 8080
 - Kokoro TTS HTTP Streaming (Recommended)
 
 ```
-docker run -itd --privileged -p 8001:8880 kokoro-fastapi-xpu:latest
+# TODO: Fix user permission issue to render group. 
+docker run -it --user root --privileged -p 8001:8880 kokoro-fastapi-xpu:latest
 ```
 
 - Magpie Websocket Adaptive Streaming. Skip this step if using Kokoro above.
