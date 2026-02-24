@@ -29,6 +29,7 @@ docker build -t nemotron-s2s -f Dockerfile.intel .
 ```
 git clone https://github.com/gsilva2016/Kokoro-FastAPI.git
 cd Kokoro-FastAPI
+git checkout ia
 docker build -t kokoro-fastapi-xpu -f docker/xpu/Dockerfile .
 ```
 
