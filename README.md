@@ -15,29 +15,34 @@ Accompanying blog posts:
 
 ## Quick start - Run everything locally (Intel iGPU or Intel dGPU)
 
-### Prequisites
-
 - Refer to the following https://docs.pytorch.org/docs/stable/notes/get_start_xpu.html for Intel XPU support in PyTorch.
 
 - Refer to the following https://dgpu-docs.intel.com/driver/client/overview.html#ubuntu-22.04 for Intel GPU support.
 
-- Build Containers
+- Nemotron ASR/TTS/Pipecat UI containers
 
 ```
 docker build -t nemotron-s2s -f Dockerfile.intel .
 ```
 
-- llamacpp for interleaved streaming support using Pytorch + Intel XPU 
+- Kokoro TTS with Intel XPU enabled
+```
+git clone https://github.com/gsilva2016/Kokoro-FastAPI.git
+cd Kokoro-FastAPI
+docker build -t kokoro-fastapi-xpu -f docker/xpu/Dockerfile .
+```
+
+- llamacpp for interleaved streaming support using Pytorch + Intel XPU.  Ensure ./gguf_models directory exists before performing the below steps
 
 ```
 # Add your token
 huggingface-cli login --token $your_token_here
-```
-
-- Ensure ./gguf_models directory exists before performing the below steps
-
-```
 huggingface-cli download unsloth/Llama-3.2-3B-Instruct-GGUF --include "Llama-3.2-3B-Instruct-F16.gguf" --local-dir ./gguf_models
+```
+
+- Start llamacpp container
+
+```
 docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel -c 4096 -m /models/Llama-3.2-3B-Instruct-F16.gguf
 ```
 
@@ -47,7 +52,7 @@ docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/g
 curl 127.0.0.1:8000/health
 ```
 
-- Skip vLLM + OpenVINO if using llamacpp instead
+- vLLM + OpenVINO. Skip this step if using llamacpp instead
 ```
 conda create -n nemotron-vllm python=3.12 -y
 conda activate nemotron-vllm
@@ -62,19 +67,26 @@ conda deactivate
 ### 1. Start ASR Service
 
 ```
-docker run -itd --privileged --net host -v `pwd`:/savedir nemotron-s2s
+docker run -it --privileged --net host -v `pwd`:/savedir nemotron-s2s
 ```
 
 ```
 conda activate nemotron-s2s
 cd /savedir/src
-python -m nemotron_speech.tts_server --port 8001
+python -m nemotron_speech.server --port 8080
 ```
 
 ### 2. Start TTS Service
 
+- Kokoro TTS HTTP Streaming (Recommended)
+
 ```
-docker run -itd --privileged --net host -v `pwd`:/savedir nemotron-s2s
+docker run -itd --privileged -p 8001:8880 kokoro-fastapi-xpu:latest
+```
+
+- Magpie Websocket Adaptive Streaming. Skip this step if using Kokoro above.
+```
+docker run -it --privileged --net host -v `pwd`:/savedir nemotron-s2s
 ```
 
 ```
@@ -83,7 +95,7 @@ cd /savedir/src
 python -m nemotron_speech.tts_server --port 8001
 ```
 
-### 3. (Optional - Skip if using llamacpp above) Start vLLM Service
+### 3. Start vLLM Service. Skip if using llamacpp above.
 
 Open a new terminal and ensure the current directory is nemotron-january-2026. Ensure you set mytoken below.
 
@@ -92,7 +104,7 @@ Open a new terminal and ensure the current directory is nemotron-january-2026. E
 huggingface-cli login --token $mytoken
 ```
 
-- Start vLLM
+- Start vLLM.
 ```
 conda activate nemotron-vllm
 python -m vllm.entrypoints.openai.api_server --model "meta-llama/Llama-3.2-3B-Instruct" --host 0.0.0.0 --port 8000 --dtype float16 --trust-remote-code  --max-num-seqs 1 --max-model-len "4096" --enforce-eager --disable-log-requests --enable-prefix-caching
@@ -101,7 +113,7 @@ python -m vllm.entrypoints.openai.api_server --model "meta-llama/Llama-3.2-3B-In
 ### 3. Pipecat WebUI DemoA
 
 ```
-docker run -itd --privileged --net host -v `pwd`:/savedir nemotron-s2s
+docker run -it --privileged --net host -v `pwd`:/savedir nemotron-s2s
 ```
 
 ```
@@ -110,7 +122,7 @@ conda activate nemotron-s2s
 python pipecat_bots/bot_interleaved_streaming.py
 ```
 
-### 4. Run the Voice Bott
+### 4. Run the Voice Bot
 
 Open `http://localhost:7860/client` in your browser.
 
