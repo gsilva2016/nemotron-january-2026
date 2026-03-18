@@ -15,36 +15,74 @@ Accompanying blog posts:
 
 ## Quick start - Run everything locally (Intel iGPU or Intel dGPU)
 
+
 - Refer to the following https://docs.pytorch.org/docs/stable/notes/get_start_xpu.html for Intel XPU support in PyTorch.
 
 - Refer to the following https://dgpu-docs.intel.com/driver/client/overview.html#ubuntu-22.04 for Intel GPU support.
 
-- Nemotron ASR/TTS/Pipecat UI containers
+### Prerequisites
+
+Build nemotron container
 
 ```
 docker build -t nemotron-s2s -f Dockerfile.intel .
 ```
 
-- Kokoro TTS with Intel XPU enabled
+- Build Kokoro TTS with Intel XPU enabled
 ```
 git clone https://github.com/gsilva2016/Kokoro-FastAPI.git
 cd Kokoro-FastAPI
 git checkout ia
 docker build -t kokoro-fastapi-xpu -f docker/xpu/Dockerfile .
+cd ..
 ```
 
-- llamacpp for interleaved streaming support using Pytorch + Intel XPU.  Ensure ./gguf_models directory exists before performing the below steps
+- Download llamacpp agent and ASR models for interleaved streaming support using Pytorch + Intel XPU.  Ensure ./gguf_models directory exists, your Huggingface token is set below, and you have the Huggingface cli tools installed before performing the below steps. 
 
 ```
-# Add your token
-huggingface-cli login --token $your_token_here
-huggingface-cli download unsloth/Llama-3.2-3B-Instruct-GGUF --include "Llama-3.2-3B-Instruct-F16.gguf" --local-dir ./gguf_models
+hf auth login --token $your_token_here
+#huggingface-cli login --token $your_token_here
 ```
+
+Agent model
+
+```
+hf download bartowski/Qwen2.5-7B-Instruct-GGUF --include Qwen2.5-7B-Instruct-Q4_K_S.gguf --local-dir ./gguf_models
+
+hf download Qwen/Qwen2.5-1.5B-Instruct-GGUF --include qwen2.5-1.5b-instruct-q8_0.gguf --local-dir ./gguf_models
+
+
+hf download bartowski/Qwen2.5-7B-Instruct-GGUF --include Qwen2.5-7B-Instruct-Q4_K_M.gguf --local-dir ./gguf_models
+#hf download bartowski/Qwen2.5-7B-Instruct-GGUF --include Qwen2.5-7B-Instruct-Q6_K.gguf --local-dir ./gguf_models
+```
+
+ASR model
+
+Ensure ./models directory exists before executing the below
+
+```
+hf download nvidia/nemotron-speech-streaming-en-0.6b --local-dir ./models
+```
+
+FYI - Other agent model(s) which were utilized, but the agaent function calling does not function with llamacpp-server (read that again).
+
+```
+#hf download unsloth/Llama-3.2-3B-Instruct-GGUF --include "Llama-3.2-3B-Instruct-F16.gguf" --local-dir ./gguf_models 
+#huggingface-cli download unsloth/Llama-3.2-3B-Instruct-GGUF --include "Llama-3.2-3B-Instruct-F16.gguf" --local-dir ./gguf_models
+```
+
+### 1. Start Agent
 
 - Start llamacpp container
 
 ```
-docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel -c 4096 -m /models/Llama-3.2-3B-Instruct-F16.gguf
+docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --jinja -c 4096 -m /models/Qwen2.5-7B-Instruct-Q4_K_S.gguf
+
+#docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --jinja -c 4096 -m /models/qwen2.5-1.5b-instruct-q8_0.gguf
+
+#docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --jinja -c 4096 -m /models/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+
+#docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel -c 4096 -m /models/Llama-3.2-3B-Instruct-F16.gguf
 ```
 
 - Verify llamacpp is running. You may have to wait 2-5 minutes for a valid response.
@@ -53,7 +91,7 @@ docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/g
 curl 127.0.0.1:8000/health
 ```
 
-- vLLM + OpenVINO. Skip this step if using llamacpp instead
+- Skip this step if using llamacpp. vLLM + OpenVINO. 
 ```
 conda create -n nemotron-vllm python=3.12 -y
 conda activate nemotron-vllm
@@ -65,7 +103,22 @@ pip uninstall triton -y
 conda deactivate
 ```
 
-### 1. Start ASR Service
+### 2. Start Database
+
+Open .env file and set the Database password.
+
+```
+source .env
+docker run --rm -itd --name mariadb -e MARIADB_ROOT_PASSWORD=$DB_PASSWD -e MARIADB_DATABASE=inv_db -e MARIADB_USER=user -e MARIADB_PASSWORD=$DB_PASSWD --net host mariadb:latest
+```
+
+Database GUI (Optional Step): 
+* Downloadand install DBeaver database tool https://dbeaver.io/download/
+* Open DBeaver
+* Click Database / MariaDB
+* Set database to inv_db, set password, and click connect
+
+### 3. Start ASR Service
 
 ```
 docker run -it --privileged --net host -v `pwd`:/savedir nemotron-s2s
@@ -74,19 +127,20 @@ docker run -it --privileged --net host -v `pwd`:/savedir nemotron-s2s
 ```
 conda activate nemotron-s2s
 cd /savedir/src
-python -m nemotron_speech.server --port 8080
+#python -m nemotron_speech.server --port 8080
+python -m nemotron_speech.server --port 8080 --model ../models/nemotron-speech-streaming-en-0.6b.nemo
 ```
 
-### 2. Start TTS Service
+### 4. Start TTS Service
 
 - Kokoro TTS HTTP Streaming (Recommended)
 
 ```
 # TODO: Fix user permission issue to render group. 
-docker run -it --user root --privileged -p 8001:8880 kokoro-fastapi-xpu:latest
+docker run -itd --user root --privileged -p 8001:8880 kokoro-fastapi-xpu:latest
 ```
 
-- Magpie Websocket Adaptive Streaming. Skip this step if using Kokoro above.
+- Skip this step if using Kokoro above. Magpie Websocket Adaptive Streaming. 
 ```
 docker run -it --privileged --net host -v `pwd`:/savedir nemotron-s2s
 ```
@@ -97,7 +151,7 @@ cd /savedir/src
 python -m nemotron_speech.tts_server --port 8001
 ```
 
-### 3. Start vLLM Service. Skip if using llamacpp above.
+### 4.1. Skip if using llamacpp above. Start vLLM Service. 
 
 Open a new terminal and ensure the current directory is nemotron-january-2026. Ensure you set mytoken below.
 
@@ -112,7 +166,22 @@ conda activate nemotron-vllm
 python -m vllm.entrypoints.openai.api_server --model "meta-llama/Llama-3.2-3B-Instruct" --host 0.0.0.0 --port 8000 --dtype float16 --trust-remote-code  --max-num-seqs 1 --max-model-len "4096" --enforce-eager --disable-log-requests --enable-prefix-caching
 ```
 
-### 3. Pipecat WebUI DemoA
+### 5. Create Database Contents
+```
+docker run -it --privileged --net host -v `pwd`:/savedir nemotron-s2s
+```
+
+```
+conda activate nemotron-s2s
+cp /savedir/.env .
+source .env
+python create-db.py
+python create-db-tables.py
+exit
+```
+
+
+### 6. Pipecat WebUI DemoA
 
 ```
 docker run -it --privileged --net host -v `pwd`:/savedir nemotron-s2s
@@ -124,9 +193,13 @@ conda activate nemotron-s2s
 python pipecat_bots/bot_interleaved_streaming.py
 ```
 
-### 4. Run the Voice Bot
+### 8. Run the Voice Bot
 
 Open `http://localhost:7860/client` in your browser.
+
+To make available offline: 
+1. Enable the addon: https://addons.mozilla.org/en-US/firefox/addon/save-page-we/
+2. 
 
 ## Quick start - Run everything locally (DGX Spark or RTX 5090)
 

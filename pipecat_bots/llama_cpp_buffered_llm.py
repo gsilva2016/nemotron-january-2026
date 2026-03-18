@@ -34,6 +34,8 @@ import asyncio
 import json
 import time
 from typing import Optional
+import mariadb
+import sys
 
 import httpx
 from loguru import logger
@@ -52,6 +54,7 @@ from pipecat.frames.frames import (
     StartFrame,
     SystemFrame,
 )
+from pipecat.services.llm_service import FunctionCallFromLLM, LLMService
 from pipecat.metrics.metrics import LLMTokenUsage, LLMUsageMetricsData
 from pipecat.adapters.services.open_ai_adapter import OpenAILLMAdapter
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -90,7 +93,7 @@ class LLMSlotMetricsFrame(SystemFrame):
         tokens_evaluated: int = 0,
         tokens_predicted: int = 0,
         first_segment_tokens_cached: int = 0,
-        first_segment_tokens_evaluated: int = 0,
+        first_segment_tokens_evaluated: int = 0,        
     ):
         super().__init__()
         self.slot_id = slot_id
@@ -130,7 +133,7 @@ class LLMSlotMetricsFrame(SystemFrame):
         return self.__str__()
 
 
-class LlamaCppBufferedLLMService(AIService):
+class LlamaCppBufferedLLMService(LLMService): # (AIService):
     """LLM service using buffered approach for optimal KV cache utilization.
 
     Generates LLM responses by running generations to completion (no mid-stream
@@ -144,21 +147,320 @@ class LlamaCppBufferedLLMService(AIService):
     - Single slot operation for 100% KV cache reuse
     """
 
+    def get_all_in_cooler(self, noargs):
+        """Get all inventory types in cooler"""
+        print("Get All Items::::")
+        
+        db_config = {
+            'host': '127.0.0.1',
+            'port': 3306,
+            'user': 'root',
+            'password': self._db_passwd,
+            'database': 'inv_db'
+        }
+
+        try:
+            # Establish the connection
+            conn = mariadb.connect(**db_config)
+            print("Connection successful!")
+
+            # Create a cursor object to execute SQL queries
+            cursor = conn.cursor()
+
+            # You can now execute queries using the cursor object, e.g.,
+            print("Retun everything...")
+            ITEM_NAME = 0
+            cursor.execute("SELECT distinct category FROM inventory")
+            results = cursor.fetchall()
+            items = []
+            for row in results:
+                print(f"Got item: {row[ITEM_NAME]}")
+                #items.append({"item_type": row[0]})
+                items.append(row[ITEM_NAME])
+            
+            
+            #return json.dumps(items)
+            if len(items) == 0:
+                return f"Cooler is empty"
+            else:
+                return "Cooler information requested: " + ",".join(items)
+
+        except mariadb.Error as e:
+            print(f"Error connecting to MariaDB: {e}")
+        finally:
+            # Close cursor and connection
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+            print("Connection closed.")
+
+
+    def get_items_by_product_type(self, items_requested):
+        """Get cooler items info"""
+        print(f"GET_ITEM_INFO::::{items_requested}")
+        
+        db_config = {
+            'host': '127.0.0.1',
+            'port': 3306,
+            'user': 'root',
+            'password': self._db_passwd,
+            'database': 'inv_db'
+        }
+
+        try:
+            # Establish the connection
+            conn = mariadb.connect(**db_config)
+            print("Connection successful!")
+
+            # Create a cursor object to execute SQL queries
+            cursor = conn.cursor()
+
+            # You can now execute queries using the cursor object, e.g.,
+            items_requested = json.loads(items_requested)
+            if items_requested == {} or items_requested.get("item", "") == "all":
+                print("ERROR: Wrong tool called. Calling get_cooler_items instead")
+                return get_cooler_items()
+                # print("Retun everything...")
+                # ITEM_NAME = 0
+                # cursor.execute("SELECT distinct category FROM inventory")
+                # results = cursor.fetchall()
+                # items = []
+                # for row in results:
+                #     print(f"Got item: {row[ITEM_NAME]}")
+                #     #items.append({"item_type": row[0]})
+                #     items.append(row[ITEM_NAME])
+            else:
+                ITEM_NAME = 2
+                ITEM_PRICE = 6
+                item_type = items_requested.get("item", "").lower()
+                print(f"Return specific for: {item_type}")
+                # {"item":"Beverages"}
+
+                if "beverage" in item_type:
+                    cursor.execute("SELECT * FROM inventory where category = 'Beverage'")
+                elif "sandwich" in item_type:
+                    cursor.execute("SELECT * FROM inventory where category = 'Sandwich'")
+                elif "ice" in item_type and "cream" in item_type:
+                    cursor.execute("SELECT * FROM inventory where category = 'Icecream'")
+                else:
+                    cursor.execute("SELECT '', '', 'Uknown item requested', '', '', '', ''")
+
+                results = cursor.fetchall()
+                items = []                
+                for row in results:
+                    print(f"Got item: {row[ITEM_NAME]} price: ${row[ITEM_PRICE]}")
+                    #items.append({"item_type": row[0]})
+                    items.append(row[ITEM_NAME])
+                    #items.append(row[ITEM_NAME] + " price $" + str(row[ITEM_PRICE]))
+            
+            #return json.dumps(items)
+            if len(items) == 0:
+                return f"No items found for: {items_requested.get("item", "")}"
+            else:
+                return "Cooler information requested: " + ",".join(items)
+
+        except mariadb.Error as e:
+            print(f"Error connecting to MariaDB: {e}")
+        finally:
+            # Close cursor and connection
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+            print("Connection closed.")
+
+
+    def get_item_price(self, item_requested):
+        """Get item price"""
+        print(f"GET_ITEM_PRICE for::::{item_requested}")
+        
+        db_config = {
+            'host': '127.0.0.1',
+            'port': 3306,
+            'user': 'root',
+            'password': self._db_passwd,
+            'database': 'inv_db'
+        }
+
+        try:
+            # Establish the connection
+            conn = mariadb.connect(**db_config)
+            print("Connection successful!")
+
+            # Create a cursor object to execute SQL queries
+            cursor = conn.cursor()
+
+            # You can now execute queries using the cursor object, e.g.,
+            item_requested = json.loads(item_requested)
+            if item_requested == {} or item_requested.get("item", "") == "all":
+                print("Invalid item requested {item_requested}")
+                return "Invalid item requested"
+            else:
+                item_name = item_requested.get("item", "").lower()
+                print(f"Return specific for: {item_name}")
+                # {"item":"Beverages"}
+
+                parameter_with_wildcards = f"%{item_name}%"
+
+                cursor.execute("SELECT price FROM inventory where description like ?", (parameter_with_wildcards,))
+                results = cursor.fetchall()
+                items = []
+
+                for row in results:
+                    print(f"Got item price: ${row[0]}")
+                    items.append("$" + str(row[0]))
+            
+            if len(items) == 0:
+                return f"No item found for: {item_name}"
+            else:
+                return "Cooler information requested: " + items[0]
+
+        except mariadb.Error as e:
+            print(f"Error connecting to MariaDB: {e}")
+        finally:
+            # Close cursor and connection
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+            print("Connection closed.")
+
+    def get_item_ingredients(self, item_requested):
+        """Get item ingredients"""
+        print(f"GET_ITEM_INGREDIENTS for::::{item_requested}")
+        
+        db_config = {
+            'host': '127.0.0.1',
+            'port': 3306,
+            'user': 'root',
+            'password': self._db_passwd,
+            'database': 'inv_db'
+        }
+
+        try:
+            # Establish the connection
+            conn = mariadb.connect(**db_config)
+            print("Connection successful!")
+
+            # Create a cursor object to execute SQL queries
+            cursor = conn.cursor()
+
+            # You can now execute queries using the cursor object, e.g.,
+            item_requested = json.loads(item_requested)
+            if item_requested == {} or item_requested.get("item", "") == "all":
+                print("Invalid item requested {item_requested}")
+                return "Invalid item requested"
+            else:
+                item_name = item_requested.get("item", "").lower()
+                print(f"Return specific for: {item_name}")
+                # {"item":"Beverages"}
+
+                parameter_with_wildcards = f"%{item_name}%"
+
+                cursor.execute("SELECT ingredients FROM inventory where description like ?", (parameter_with_wildcards,))
+                results = cursor.fetchall()
+                items = []
+                for row in results:
+                    print(f"Got item ingredients: {row[0]}")
+                    items.append(row[0])
+            
+            if len(items) == 0:
+                return f"No item found for: {item_name}"
+            else:
+                return "Cooler information requested: " + items[0]
+
+        except mariadb.Error as e:
+            print(f"Error connecting to MariaDB: {e}")
+        finally:
+            # Close cursor and connection
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+            print("Connection closed.")
+
+
+    # LLM Tool calls
+    def get_item_info(self, item_requested):
+        """Get the current item information (price, quantity in stock, ingredients) for a given inventory type"""
+        # TODO: CHange to price / ingredients /etc for a single item
+
+        print(f"GET_ITEM_INFO:: {item_requested}")
+        db_config = {
+            'host': '127.0.0.1',
+            'port': 3306,
+            'user': 'root',
+            'password': self._db_passwd,
+            'database': 'inv_db'
+        }
+
+        try:
+            # Establish the connection
+            conn = mariadb.connect(**db_config)
+            print("Connection successful!")
+
+            # Create a cursor object to execute SQL queries
+            cursor = conn.cursor()
+
+            item_requested = item_requested.lower()
+
+            if "beverage" in item_requested:
+                cursor.execute("SELECT * FROM inventory where category = 'Beverage'")
+            elif "sandwich" in item_requested:
+                cursor.execute("SELECT * FROM inventory where category = 'Sandwich'")
+            elif "icecream" in item_requested:
+                cursor.execute("SELECT * FROM inventory where category = 'Icecream'")
+            else:
+                return json.dumps([{"item_type": item_requested, "item": "Item is not in Cooler"}])
+
+            results = cursor.fetchall()
+            items = []
+            for row in results:
+                # id, category, description, ingredients, coo, brand, price, quantity
+                #items.append({"item_type": item_type, "item": row[2]})
+                items.append(row[2])
+            #return json.dumps(items)
+            return ",".join(items)
+
+        except mariadb.Error as e:
+            print(f"Error connecting to MariaDB: {e}")
+        finally:
+            # Close cursor and connection
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+            print("Connection closed.")
+            
+
+    def get_current_weather(self, location):
+        """Get the current weather in a given location"""
+        if "San Francisco" in location:
+            return json.dumps({"location": "San Francisco", "temperature": "82", "unit": "Fahrenheit"})
+        elif "New York" in location:
+            return json.dumps({"location": "New York", "temperature": "24", "unit": "Fahrenheit"})
+        elif "North Pole" in location:
+            return json.dumps({"location": "North Pole", "temperature": "-42", "unit": "Fahrenheit"})
+        return json.dumps({"location": location, "temperature": "unknown"})
+
     class InputParams(BaseModel):
         """Configuration parameters for LlamaCppBufferedLLMService."""
         # First segment: quick TTFB, single generation then emit
-        first_segment_max_tokens: int = 24
-        first_segment_hard_max_tokens: int = 24
+        first_segment_max_tokens: int = 24*2
+        first_segment_hard_max_tokens: int = 24*2
 
         # Subsequent segments: allow accumulation for complete sentences
-        segment_max_tokens: int = 32
-        segment_hard_max_tokens: int = 96
+        segment_max_tokens: int = 32*2
+        segment_hard_max_tokens: int = 96*2
 
         # LLM generation parameters
         # Note: With temperature=0.0, top_p/top_k have no effect (greedy decoding)
         # repeat_penalty=1.0 matches NVIDIA's defaults for Nemotron 3 Nano
-        temperature: float = 0.0
+        temperature: float = 0.2
         repeat_penalty: float = 1.0
+
+        first_overall_generated: bool = True
 
         # Single slot (no alternation needed with buffered approach)
         slot_id: int = 0
@@ -171,6 +473,7 @@ class LlamaCppBufferedLLMService(AIService):
         self,
         *,
         llama_url: str = "http://localhost:8000",
+        db_passwd: str = "",
         params: Optional[InputParams] = None,
         **kwargs,
     ):
@@ -184,6 +487,7 @@ class LlamaCppBufferedLLMService(AIService):
 
         self._params = params or self.InputParams()
         self._llama_url = llama_url.rstrip("/")
+        self._db_passwd = db_passwd
 
         # HTTP client (created in start())
         self._client: Optional[httpx.AsyncClient] = None
@@ -212,6 +516,101 @@ class LlamaCppBufferedLLMService(AIService):
         self._total_tokens_predicted: int = 0
 
         self.set_model_name("llama-cpp-buffered")
+
+        # Enable tool calling for LLM
+        self._tools = [        
+        {
+            "type": "function",
+            "function": {
+                "name": "get_items_by_product_type",
+                "description": "Get the specific items in the Cooler for a product type like beverages.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "item": {
+                            "type": "string",
+                            #"description": "If request is for all items use {\"item\": \"all\"}. If requesting for a specific item use the item name"
+                            "description": "Name of the item in the format {\"item\": \"typeof_item_name_here\"}"
+                        },
+                    }
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_all_in_cooler",
+                "description": "Get all of the types of items in the Cooler e.g. what's in the cooler.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+        },
+        {
+            
+            "type": "function",
+            "function": {
+                "name": "get_item_price",
+                "description": "Get the price of the item in the Cooler.",
+                "parameters": {
+                    "type": "string",
+                    "properties": {
+                        "item": {
+                            "type": "string",
+                            "description": "Name of the item in the format {\"item\": \"item_name_here\"}"
+                        },
+                    }
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_item_ingredients",
+                "description": "Get the ingredients of the item in the Cooler.",
+                "parameters": {
+                    "type": "string",
+                    "properties": {
+                        "item": {
+                            "type": "string",
+                            "description": "Name of the item in the format {\"item\": \"item_name_here\"}"
+                        },
+                    }
+                }
+            }
+        }
+
+
+        # {
+        #     "type": "function",
+        #     "function": {
+        #         "name": "get_item_info",
+        #         "description": "Get information for an item type like a Beverage.",
+        #         "parameters": {
+        #             "type": "object",
+        #             "properties": {
+        #                 "location": {
+        #                     "type": "string",
+        #                     "description": "The item type to get the information for, in the format Beverage."
+        #                 },
+        #             },
+        #             "required": [
+        #             "item_type"
+        #             ]
+        #         }
+        #     }
+        # },
+        ]    
+
+        self._available_tool_calls = {
+            #"get_inventory_info": self.get_inventory_info,
+            "get_items_by_product_type": self.get_items_by_product_type,
+            "get_all_in_cooler": self.get_all_in_cooler,
+            "get_item_price": self.get_item_price,
+            "get_item_ingredients": self.get_item_ingredients
+        }
 
         logger.info(
             f"LlamaCppBufferedLLMService initialized: url={self._llama_url}, "
@@ -329,17 +728,56 @@ class LlamaCppBufferedLLMService(AIService):
 
     def _format_messages(self, messages: list) -> str:
         """Format messages as ChatML prompt with thinking disabled."""
-        prompt_parts = []
-        prompt_parts.append("<|begin_of_text|>")
+        #print("****************FORMAT MESSAGES")
+
+        # # Output format for Qwen2.5-7B using chat completions API 
+        json_str = "["
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
-            prompt_parts.append(f"<|start_header_id|>{role}<|end_header_id|>{content}.<|eot_id|>")
-            #"<|start_header_id|>assistant<|end_header_id|>")
-            #prompt_parts.append(f"<|im_start|>{role}\n{content}<|im_end|>")
+            content = content.replace('"', '')
+            #prompt_parts.append(f"{role} {content} <|im_end|>")
+            json_str += "{"
+            json_str += f"\"role\": \"{role}\","
+            json_str +=f"\"content\": \"{content}\""
+            json_str += "}"
+            json_str += ","
+        json_str = json_str[:-1]
+        json_str += "]"
         # Always disable thinking for voice agents
-        #prompt_parts.append("<|im_start|>assistant\n<think></think>")
-        prompt_parts.append("<|start_header_id|>assistant<|end_header_id|>")
+        #print("STR****************FORMAT MESSAGES2")
+        #print(json_str)
+        json_ret = json.loads(json_str)        
+        #print(f"OBJ********************{json_ret}")
+        return json_str
+
+
+        # Output format for Qwen2.5-7B using completions api
+        # <|im_start|>system
+        # You are a helpful assistant.<|im_end|>
+        # <|im_start|>user
+        # Give me a short introduction to large language model.<|im_end|>
+        # <|im_start|>assistant
+        # end of format
+        # for msg in messages:
+        #     role = msg.get("role", "user")
+        #     content = msg.get("content", "")
+        #     #prompt_parts.append(f"{role} {content} <|im_end|>")
+        #     prompt_parts.append(f"<|im_start|>{role}\n{content}<|im_end|>")
+        # # Always disable thinking for voice agents
+        # prompt_parts.append("<|im_start|>assistant")
+
+        # Below is Llama3.2-3B format. However, toolcalling doesn't work for this model with llamacpp.
+        #prompt_parts.append("<|begin_of_text|>")
+        #for msg in messages:
+        #    role = msg.get("role", "user")
+        #    content = msg.get("content", "")
+        #    prompt_parts.append(f"<|start_header_id|>{role}<|end_header_id|>{content}.<|eot_id|>")
+        #    #"<|start_header_id|>assistant<|end_header_id|>")
+        #    #prompt_parts.append(f"<|im_start|>{role}\n{content}<|im_end|>")
+        ## Always disable thinking for voice agents
+        ##prompt_parts.append("<|im_start|>assistant\n<think></think>")
+        #prompt_parts.append("<|start_header_id|>assistant<|end_header_id|>")
         return "\n".join(prompt_parts)
 
     def _estimate_tokens(self, msg: dict) -> int:
@@ -367,18 +805,31 @@ class LlamaCppBufferedLLMService(AIService):
         else:
             system_msg = None
             other_msgs = messages
-            system_tokens = 0
+            system_tokens = 0        
 
         # Calculate tokens for remaining messages (newest first)
         available = max_tokens - system_tokens
         kept_msgs = []
+
+        # for msg in reversed(other_msgs):
+        #     msg_tokens = self._estimate_tokens(msg)
+        #     kept_msgs.insert(0, msg)
+        #     break  # No more room
+        
+        first_item = True
         for msg in reversed(other_msgs):
             msg_tokens = self._estimate_tokens(msg)
-            if available >= msg_tokens:
+            if first_item:
+                #print(f"MOD MESSAGE: {msg}")
+                #msg["content"] = msg["content"] +  ". Remember to validate requests by using your tool."
+                first_item = False
+            if available >= msg_tokens:                
+                #print(f"KEEPING MESSAGE: {msg}")
                 kept_msgs.insert(0, msg)
                 available -= msg_tokens
             else:
-                break  # No more room
+                print("DEBUG::::::NO MORE CONTEXT_LEN ROOM!!!!")
+                break  # No more room        
 
         if system_msg:
             kept_msgs.insert(0, system_msg)
@@ -439,13 +890,14 @@ class LlamaCppBufferedLLMService(AIService):
         # Trim messages to fit context window, then format
         messages = self._trim_messages_to_fit_context(messages)
         self._prompt = self._format_messages(messages)
+        #print(f"DEUB::::trim_messages_to_fit {messages}")
 
         # Log context for debugging (use OpenAI adapter since llama.cpp uses OpenAI-compatible format)
         adapter = OpenAILLMAdapter()
         logger.debug(f"{self}: Generating chat: {adapter.get_messages_for_logging(context)}")
 
         # Segment limits - first segment uses equal max/hard_max
-        max_tokens = self._params.first_segment_max_tokens
+        max_tokens = self._params.first_segment_max_tokens        
         hard_max_tokens = self._params.first_segment_hard_max_tokens
 
         chunk_num = 0
@@ -459,9 +911,12 @@ class LlamaCppBufferedLLMService(AIService):
 
             while not self._cancelled:
                 # Step 1: Generate tokens (runs to completion, no mid-stream cancel)
+                #print("Calling generate...")
                 new_text, new_tokens, hit_eos = await self._generate(
                     max_tokens, my_generation_id
                 )
+
+                #print(f"**** {self._generation_id } != {my_generation_id}")
 
                 if self._cancelled or self._generation_id != my_generation_id:
                     break  # Interrupted, discard results
@@ -473,11 +928,13 @@ class LlamaCppBufferedLLMService(AIService):
 
                 sentences = self._buffer.extract_complete_sentences()
                 if sentences:
+                    #print(f"*****SENTENCE {sentences}")
                     # Found complete sentences - emit all of them
                     chunk_num += 1
                     if chunk_num == 1:
                         await self.stop_ttfb_metrics()
                     await self._emit_and_wait(sentences)
+                    #print(f"***FINISHED WAITING FOR SENTENCES . HIT_EOS = {hit_eos}")
 
                     if hit_eos:
                         # EOS reached - emit any remainder and finish
@@ -491,11 +948,14 @@ class LlamaCppBufferedLLMService(AIService):
                     # Switch to subsequent segment limits for next iteration
                     max_tokens = self._params.segment_max_tokens
                     hard_max_tokens = self._params.segment_hard_max_tokens
+                    #print("***CONTINUING")
                     continue
 
                 if self._buffer.token_count >= hard_max_tokens:
                     # Hit hard limit without sentence - emit at best boundary
+                    #print("DEBUG::::HARD LIMIT EXTRACT AT BOUNDS")
                     text = self._buffer.extract_at_boundary()
+                    #print(f"DEBUG::::{text}")
                     if text:
                         chunk_num += 1
                         if chunk_num == 1:
@@ -538,6 +998,7 @@ class LlamaCppBufferedLLMService(AIService):
                 )
 
             await self.stop_processing_metrics()
+            #print("***PUSHING LLMRESPONSEENDFRAME")
             await self.push_frame(LLMFullResponseEndFrame())
 
             # Push slot metrics frame
@@ -600,6 +1061,155 @@ class LlamaCppBufferedLLMService(AIService):
             logger.warning("Timeout waiting for TTS continue signal")
         self._continue_event.clear()
 
+    async def _stream_llm_request(self, payload, expected_gen_id) -> tuple[str, int, bool, str]:
+        tool_name = ""
+        tool_args = ""
+        collected_text = ""
+        tokens_generated = 0
+        hit_eos = False
+
+        try:
+            print(f"Sending POST: {payload}")
+            print("****************************************************")
+            #print(f"{self._llama_url}/completion")
+
+            async with self._client.stream(
+                "POST", f"{self._llama_url}/v1/chat/completions", json=payload
+                #"POST", f"{self._llama_url}/completion", json=payload
+            ) as response:
+                async for line in response.aiter_lines():
+                    # Check for stale generation
+                    if self._generation_id != expected_gen_id:
+                        return "", 0, False, None
+
+                    if not line.startswith("data: "):
+                        continue
+                    
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+
+                    #print(f"DEBUG POST RESP: {line}")
+
+                    try:
+                        data = json.loads(data_str)                        
+                        finished_reason = data["choices"][0].get("finish_reason", None)
+                        token_text = data["choices"][0]["delta"].get("content", None)
+                        tools_info = data["choices"][0]["delta"].get("tool_calls")
+                        if not tools_info is None:
+                            #print(f"*********DEBUG: Collected tool info: \n{tools_info}")
+                            print(f"***{tools_info[0]}\n")
+                            tools_info = tools_info[0] # support only 1 tool call
+
+                        if token_text is None:
+                            token_text = ""
+                        if finished_reason is None:
+                            finished_reason = ""
+                    except json.JSONDecodeError:
+                        print("Got a JSON EXCEPTION from POST!!!!!!!")
+                        continue
+
+                    #print("JSON LOADED FROM POST")                    
+
+                    #print(f"FINISHED REASON: '{finished_reason}'")
+                    if finished_reason == "tool_calls":
+                        #tool_name = json_data['message']['tool_calls'][0]['function']['name']
+                        #tool_args = json_data['message']['tool_calls'][0]['function']['arguments']
+                        print(f"***Got Tool to call: {tool_name} / {tool_args}")
+                        if tool_name in self._available_tool_calls:
+                            print("Calling tool...!")
+                            #print(type(tool_args))
+                            print(f"{tool_name} / {tool_args}")
+                            tool_result = self._available_tool_calls[tool_name](str(tool_args))
+                            print(f"Done calling tools {tool_result}")
+                            
+                            # POST with tool call
+                            messages = payload["messages"]
+                            messages.append({"role": "assistant", "content": ''})
+                            messages.append({
+                                "role": "tool",
+                                #"content": f"Tool result: {json.dumps(tool_result)}"
+                                "content": f"Tool result: {tool_result}. \n Now provide your final answer."
+                            })
+                            #messages.append({
+                            #    "role": "user",
+                            #    "content": "Now provide your final answer."
+                            #})
+
+                            #print(f"Final payload: {messages}")
+                            payload["messages"] = messages
+                            print("*****TRYING TO REMOVE TOOL CHOICE")
+                            if not payload.get("tool_choice", None) is None:
+                                del payload["tool_choice"]
+                                del payload["tools"]
+                                print("********REMOVED TOOL CHOICE")
+                            #self._params.first_overall_generated = True
+                            print(f"RESNED payload: {payload}")
+
+                            return "", 0, False, payload
+                            #response = requests.post(url, headers=headers, json=data)
+                            #print(f"\nFinal answer: {response.json()}")
+
+
+                    elif finished_reason == "stop" or  finished_reason == "length":
+                        print(f"***********Stopping LLM stream...{finished_reason}")
+                        # Generation stopped - check why
+                        #stop_type = data.get("stop_type", "")
+                        #token_text = data.get("content", "")
+                        if token_text:
+                            collected_text += token_text
+
+                        # Capture metrics from response
+                        # tokens_generated = data.get("tokens_predicted", 0)
+                        timings = data.get("timings", {})
+                        tokens_generated = data["timings"].get("predicted_n", "-1")
+
+
+                        # Update aggregated metrics
+                        self._total_tokens_cached += timings.get("cache_n", 0)
+                        self._total_tokens_evaluated += timings.get("prompt_n", 0)
+                        self._total_tokens_predicted += tokens_generated
+
+                        # Capture first segment metrics
+                        if self._is_first_generation:
+                            self._first_segment_tokens_cached = timings.get("cache_n", 0)
+                            self._first_segment_tokens_evaluated = timings.get("prompt_n", 0)
+                            self._is_first_generation = False
+
+                        # Only set hit_eos for natural completion, NOT for hitting n_predict
+                        # if stop_type in ("eos", "word"):
+                        #     hit_eos = True
+                        if finished_reason == "stop": # or finished_reason == "length":
+                            hit_eos = True
+
+                        break
+                    elif not tools_info is None and not tools_info == "":
+                        if not tools_info.get("function", None) is None:
+                            if not tools_info.get("type", None) is None:
+                                tool_name = tools_info["function"]["name"]
+                                tool_args = tools_info["function"]["arguments"]
+                            else:
+                                print(f"*****DEBUG got tool arg: {tools_info["function"]["arguments"]}")                                
+                                tool_args += tools_info["function"]["arguments"]
+
+                    #collected_text += data.get("content", "")
+                    #print(f"TOken text is: '{token_text}'")
+                    collected_text += token_text
+                    #print(f"****************COLL TEXT: '{collected_text}'")
+                    #print(f"***TOOL CALL: {tool_name} / {tool_args}")
+
+        except httpx.RemoteProtocolError as e:
+            logger.warning(f"LlamaCppBufferedLLM: Connection issue: {e}")
+        except Exception as e:
+            logger.error(f"LlamaCppBufferedLLM: HTTP streaming error: {e}")
+            raise
+
+        # Handle empty generation (model immediately hit EOS)
+        if not collected_text and tokens_generated == 0:
+            hit_eos = True
+
+        return collected_text, tokens_generated, hit_eos, None
+
     async def _generate(
         self, max_tokens: int, expected_gen_id: int
     ) -> tuple[str, int, bool]:
@@ -615,83 +1225,71 @@ class LlamaCppBufferedLLMService(AIService):
         Note: hit_eos is True only for natural completion (EOS token or stop word).
         Hitting the n_predict limit returns hit_eos=False.
         """
-        full_prompt = self._prompt + self._generated_text
+        #print("GENERATE")
+        # TODO: second string is bad!
+        #full_prompt = self._prompt + self._generated_text
 
-        payload = {
-            "prompt": full_prompt,
-            "n_predict": max_tokens,
-            "id_slot": self._params.slot_id,
-            "cache_prompt": True,
-            "temperature": self._params.temperature,
-            "repeat_penalty": self._params.repeat_penalty,
-            "stream": True,
-            "stop": ["<|im_end|>"],
-        }
+        #print(f"PROMPT: {self._prompt}")
+        #print(f"GENTEXT: {self._generated_text}")
+        json_obj = json.loads(self._prompt)
+        #print(f"***OBJ CONV: {json_obj}")
 
-        collected_text = ""
-        tokens_generated = 0
-        hit_eos = False
+        json_obj.append( {"role": "assistant","content": self._generated_text} )
+        full_prompt = json.dumps(json_obj)
+        #print(f"GENERATE: {full_prompt}")
 
-        try:
-            async with self._client.stream(
-                "POST", f"{self._llama_url}/completion", json=payload
-            ) as response:
-                async for line in response.aiter_lines():
-                    # Check for stale generation
-                    if self._generation_id != expected_gen_id:
-                        return "", 0, False
+        # payload = {
+        #     "prompt": full_prompt,
+        #     "n_predict": max_tokens,
+        #     "id_slot": self._params.slot_id,
+        #     "cache_prompt": True,
+        #     "temperature": self._params.temperature,
+        #     "tools": self._tools,
+        #     "repeat_penalty": self._params.repeat_penalty,
+        #     "stream": True,
+        #     "stop": ["<|im_end|>"],
+        # }
 
-                    if not line.startswith("data: "):
-                        continue
+        #print(f"is first gen: {messages[len(messages)-1].get("content") == ""}")
 
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        break
+        print(f"FIRST OVERALL: {self._params.first_overall_generated}")
+        
+        # QWEN
+        messages = json.loads(full_prompt)
+        if not self._params.first_overall_generated:
+            print("***********REQUIRING TOOL!!")
+            payload = {
+                "tools": self._tools,
+                "tool_choice": "required",
+                "n_predict": max_tokens,
+                "id_slot": self._params.slot_id,
+                "cache_prompt": True,
+                "temperature": 0.1, #self._params.temperature,
+                "repeat_penalty": self._params.repeat_penalty,
+                "stream": True,
+                #"stop": ["<|im_end|>"],
+                "messages": messages,
+            }
+        else:
+            print("***********NOT REQUIRING TOOL!!")
+            self._params.first_overall_generated = False
+            payload = {
+                #"tools": self._tools,
+                "n_predict": max_tokens,
+                "id_slot": self._params.slot_id,
+                "cache_prompt": True,
+                "temperature": 0.1, #self._params.temperature,
+                "repeat_penalty": self._params.repeat_penalty,
+                "stream": True,
+                #"stop": ["<|im_end|>"],
+                "messages": messages,
+            }
 
-                    try:
-                        data = json.loads(data_str)
-                    except json.JSONDecodeError:
-                        continue
 
-                    if data.get("stop"):
-                        # Generation stopped - check why
-                        stop_type = data.get("stop_type", "")
-                        token_text = data.get("content", "")
-                        if token_text:
-                            collected_text += token_text
+        collected_text, tokens_generated, hit_eos, next_payload = await self._stream_llm_request(payload, expected_gen_id)
 
-                        # Capture metrics from response
-                        tokens_generated = data.get("tokens_predicted", 0)
-                        timings = data.get("timings", {})
-
-                        # Update aggregated metrics
-                        self._total_tokens_cached += timings.get("cache_n", 0)
-                        self._total_tokens_evaluated += timings.get("prompt_n", 0)
-                        self._total_tokens_predicted += tokens_generated
-
-                        # Capture first segment metrics
-                        if self._is_first_generation:
-                            self._first_segment_tokens_cached = timings.get("cache_n", 0)
-                            self._first_segment_tokens_evaluated = timings.get("prompt_n", 0)
-                            self._is_first_generation = False
-
-                        # Only set hit_eos for natural completion, NOT for hitting n_predict
-                        if stop_type in ("eos", "word"):
-                            hit_eos = True
-
-                        break
-
-                    collected_text += data.get("content", "")
-
-        except httpx.RemoteProtocolError as e:
-            logger.warning(f"LlamaCppBufferedLLM: Connection issue: {e}")
-        except Exception as e:
-            logger.error(f"LlamaCppBufferedLLM: HTTP streaming error: {e}")
-            raise
-
-        # Handle empty generation (model immediately hit EOS)
-        if not collected_text and tokens_generated == 0:
-            hit_eos = True
+        while not next_payload is None:
+            collected_text, tokens_generated, hit_eos, next_payload = await self._stream_llm_request(next_payload, expected_gen_id)
 
         # Update cache state for next generation
         self._generated_text += collected_text

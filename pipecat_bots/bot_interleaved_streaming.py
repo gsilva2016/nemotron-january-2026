@@ -29,6 +29,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from loguru import logger
 
+from pipecat.adapters.schemas.function_schema import FunctionSchema
+from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from pipecat.services.llm_service import FunctionCallParams
 from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
@@ -83,6 +86,9 @@ RECORDINGS_DIR = Path(__file__).parent.parent / "recordings"
 # VAD configuration - used by both VAD analyzer and V2V metrics
 VAD_STOP_SECS = 1 #0.2
 
+DB_PASSWD = os.getenv("DB_PASSWD")
+
+
 
 def ensure_recordings_dir() -> Path:
     """Create recordings directory if it doesn't exist."""
@@ -127,8 +133,8 @@ transport_params = {
     "webrtc": lambda: TransportParams(
         audio_in_enabled=True,
         audio_out_enabled=True,
-        vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=VAD_STOP_SECS))
-        #turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams()),
+        vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=VAD_STOP_SECS)),
+        #turn_analyzer=LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=1)),
     ),
 }
 
@@ -193,13 +199,30 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             filepath = RECORDINGS_DIR / f"{timestamp}.wav"
             await save_audio_file(audio, sample_rate, num_channels, filepath)
 
+    # LLM service - buffered mode (single slot, 100% KV cache reuse)
+    llm = LlamaCppBufferedLLMService(
+        llama_url=NVIDIA_LLAMA_CPP_URL,
+        db_passwd=DB_PASSWD,
+        params=LlamaCppBufferedLLMService.InputParams(
+            first_segment_max_tokens=24*2,
+            first_segment_hard_max_tokens=24*2,
+            segment_max_tokens=32*2,
+            segment_hard_max_tokens=96*2            
+        ),
+    )
+    logger.info("Using LlamaCppBufferedLLMService (single-slot, 100% cache)")
+
     messages = [
         {
             "role": "system",
             "content": (
-                "You are a helpful AI assistant."
-                "Your goal is to have a natural conversation with the user. "
-                "Keep your responses concise and conversational since they will be spoken aloud. "
+                "You are an assistant with access to tools."
+                "You give customers information about items in a Cooler. " # which contains Beverages, Sandwiches, and Icecream. "
+                #"Only answer questions related to what you have in the Cooler by using your tool calls."
+                #"Always call a tool when the user asks for information."
+                "For any queries which do not relate to a provided tool, then ask if you can help with any Cooler related questions."
+                #"Your goal is to have a natural conversation with the user."
+                "Keep your responses to one to two sentences and conversational since they will be spoken aloud. "
                 "Avoid special characters. Use only simple, plain text sentences. "
                 #"Always punctuate your responses using standard sentence punctuation: commas, periods, question marks, exclamation points, etc. "
                 #"Always spell out numbers as words. "
@@ -207,24 +230,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         },
         {
             "role": "user",
-            "content": "Say hello and ask how you can help.",
+            "content": "Say hello and state that you are here to help answer questions about what is in the cooler.",
         },
     ]
 
+    
     context = LLMContext(messages)
     context_aggregator = LLMContextAggregatorPair(context)
-
-    # LLM service - buffered mode (single slot, 100% KV cache reuse)
-    llm = LlamaCppBufferedLLMService(
-        llama_url=NVIDIA_LLAMA_CPP_URL,
-        params=LlamaCppBufferedLLMService.InputParams(
-            first_segment_max_tokens=24,
-            first_segment_hard_max_tokens=24,
-            segment_max_tokens=32,
-            segment_hard_max_tokens=96,
-        ),
-    )
-    logger.info("Using LlamaCppBufferedLLMService (single-slot, 100% cache)")
 
     # RTVI processor for client communication
     rtvi = RTVIProcessor(config=RTVIConfig(config=[]))

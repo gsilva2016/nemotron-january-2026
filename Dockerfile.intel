@@ -14,5 +14,11 @@ RUN miniforge_script=Miniforge3-$(uname)-$(uname -m).sh && [ -e $miniforge_scrip
 
 RUN CONDA_DIR=$HOME/miniforge3; eval "$(${CONDA_DIR}/bin/conda shell.bash hook 2> /dev/null)"; conda activate nemotron-s2s; git clone https://github.com/NVIDIA-NeMo/NeMo.git; cd NeMo; git checkout 644201898480ec8c8d0a637f0c773825509ac4dc; pip install --no-cache -e ".[asr,tts,rtvi,all]"; pip install "pipecat-ai[silero,openai,cartesia,runner,daily,local-smart-turn-v3,webrtc]==0.0.98"; pip install dotenv websockets aiortc opencv-python
 
+RUN apt update; apt-get install -y libmariadb3 libmariadb-dev; CONDA_DIR=$HOME/miniforge3; eval "$(${CONDA_DIR}/bin/conda shell.bash hook 2> /dev/null)"; conda activate nemotron-s2s; pip install mariadb
 
+# NTLK cache - https://www.nltk.org/data.html
+RUN CONDA_DIR=$HOME/miniforge3; eval "$(${CONDA_DIR}/bin/conda shell.bash hook 2> /dev/null)"; conda activate nemotron-s2s; python -m nltk.downloader -d /usr/local/share/nltk_data all
+
+COPY create-db.py .
+COPY create-db-tables.py .
 
