@@ -22,7 +22,7 @@ Accompanying blog posts:
 
 ### Prerequisites
 
-Build nemotron container
+- Build nemotron container
 
 ```
 docker build -t nemotron-s2s -f Dockerfile.intel .
@@ -196,10 +196,6 @@ python pipecat_bots/bot_interleaved_streaming.py
 ### 8. Run the Voice Bot
 
 Open `http://localhost:7860/client` in your browser.
-
-To make available offline: 
-1. Enable the addon: https://addons.mozilla.org/en-US/firefox/addon/save-page-we/
-2. 
 
 ## Quick start - Run everything locally (DGX Spark or RTX 5090)
 
