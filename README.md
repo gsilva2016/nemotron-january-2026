@@ -49,10 +49,8 @@ Agent model
 ```
 hf download bartowski/Qwen2.5-7B-Instruct-GGUF --include Qwen2.5-7B-Instruct-Q4_K_S.gguf --local-dir ./gguf_models
 
-hf download Qwen/Qwen2.5-1.5B-Instruct-GGUF --include qwen2.5-1.5b-instruct-q8_0.gguf --local-dir ./gguf_models
-
-
-hf download bartowski/Qwen2.5-7B-Instruct-GGUF --include Qwen2.5-7B-Instruct-Q4_K_M.gguf --local-dir ./gguf_models
+#hf download Qwen/Qwen2.5-1.5B-Instruct-GGUF --include qwen2.5-1.5b-instruct-q8_0.gguf --local-dir ./gguf_models
+#hf download bartowski/Qwen2.5-7B-Instruct-GGUF --include Qwen2.5-7B-Instruct-Q4_K_M.gguf --local-dir ./gguf_models
 #hf download bartowski/Qwen2.5-7B-Instruct-GGUF --include Qwen2.5-7B-Instruct-Q6_K.gguf --local-dir ./gguf_models
 ```
 
