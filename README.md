@@ -47,8 +47,24 @@ hf auth login --token $your_token_here
 Agent model
 
 ```
-hf download bartowski/Qwen2.5-7B-Instruct-GGUF --include Qwen2.5-7B-Instruct-Q4_K_S.gguf --local-dir ./gguf_models
+# Fast, but needs tweaking since it responsds diff from other models
+hf download LiquidAI/LFM2.5-1.2B-Instruct-GGUF --include LFM2.5-1.2B-Instruct-F16.gguf --local-dir ./gguf_models
 
+# Slow
+#  hf download Qwen/Qwen3-0.6B-GGUF --local-dir ./gguf_models
+
+
+# Very good quality so far...
+# hf download Qwen/Qwen2.5-1.5B-Instruct-GGUF --include qwen2.5-1.5b-instruct-q8_0.gguf --local-dir ./gguf_models
+
+# Good quality for a little bit...sometimes wrong func or wrong func + missing args for the func!
+# hf download Qwen/Qwen2.5-1.5B-Instruct-GGUF --include qwen2.5-1.5b-instruct-q4_k_m.gguf --local-dir ./gguf_models
+# Better ranked but slow
+# hf download Qwen/Qwen3-0.6B-GGUF --local-dir ./gguf_models
+
+#hf download LiquidAI/LFM2.5-1.2B-Instruct-GGUF --include LFM2.5-1.2B-Instruct-F16.gguf --local-dir ./gguf_models
+#hf download Qwen/Qwen2.5-3B-Instruct-GGUF --include qwen2.5-3b-instruct-q4_k_m.gguf --local-dir ./gguf_models
+#hf download bartowski/Qwen2.5-7B-Instruct-GGUF --include Qwen2.5-7B-Instruct-Q4_K_S.gguf --local-dir ./gguf_models
 #hf download Qwen/Qwen2.5-1.5B-Instruct-GGUF --include qwen2.5-1.5b-instruct-q8_0.gguf --local-dir ./gguf_models
 #hf download bartowski/Qwen2.5-7B-Instruct-GGUF --include Qwen2.5-7B-Instruct-Q4_K_M.gguf --local-dir ./gguf_models
 #hf download bartowski/Qwen2.5-7B-Instruct-GGUF --include Qwen2.5-7B-Instruct-Q6_K.gguf --local-dir ./gguf_models
@@ -74,7 +90,15 @@ FYI - Other agent model(s) which were utilized, but the agaent function calling 
 - Start llamacpp container
 
 ```
-docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --jinja -c 4096 -m /models/Qwen2.5-7B-Instruct-Q4_K_S.gguf
+docker run -it --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --jinja -c 8096 -m /models/LFM2.5-1.2B-Instruct-F16.gguf
+
+#docker run -itd --privileged -p 8000:8080 -e ZES_ENABLE_SYSMAN=1 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --jinja -c 8096 -m /models/qwen2.5-1.5b-instruct-q8_0.gguf
+
+#docker run -it --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --jinja -c 4096 -m /models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+
+#docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --jinja -c 4096 -m /models/qwen2.5-3b-instruct-q4_k_m.gguf
+
+#docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --jinja -c 4096 -m /models/Qwen2.5-7B-Instruct-Q4_K_S.gguf
 
 #docker run -itd --privileged -p 8000:8080 -v `pwd`/gguf_models:/models ghcr.io/ggml-org/llama.cpp:server-intel --jinja -c 4096 -m /models/qwen2.5-1.5b-instruct-q8_0.gguf
 

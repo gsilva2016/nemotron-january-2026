@@ -169,21 +169,26 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
 
             # You can now execute queries using the cursor object, e.g.,
             print("Retun everything...")
-            ITEM_NAME = 0
-            cursor.execute("SELECT distinct category FROM inventory")
+            ITEM_NAME = 1
+            ITEM_COUNT = 0
+            cursor.execute("SELECT COUNT(*), category FROM inventory GROUP BY category")
             results = cursor.fetchall()
             items = []
             for row in results:
-                print(f"Got item: {row[ITEM_NAME]}")
+                print(f"Got item: {row[ITEM_NAME]} with count: {row[ITEM_COUNT]}")
                 #items.append({"item_type": row[0]})
-                items.append(row[ITEM_NAME])
+                if row[ITEM_COUNT] > 1:
+                    items.append(row[ITEM_NAME] + "s")
+                else:
+                    items.append(row[ITEM_NAME])
             
             
             #return json.dumps(items)
             if len(items) == 0:
                 return f"Cooler is empty"
             else:
-                return "Cooler information requested: " + ",".join(items)
+                return ",".join(items)
+                #return "Cooler information requested: " + ",".join(items)
 
         except mariadb.Error as e:
             print(f"Error connecting to MariaDB: {e}")
@@ -447,17 +452,17 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
     class InputParams(BaseModel):
         """Configuration parameters for LlamaCppBufferedLLMService."""
         # First segment: quick TTFB, single generation then emit
-        first_segment_max_tokens: int = 24*2
-        first_segment_hard_max_tokens: int = 24*2
+        first_segment_max_tokens: int = 24*3
+        first_segment_hard_max_tokens: int = 24*3
 
         # Subsequent segments: allow accumulation for complete sentences
-        segment_max_tokens: int = 32*2
-        segment_hard_max_tokens: int = 96*2
+        segment_max_tokens: int = 32*3
+        segment_hard_max_tokens: int = 96*3
 
         # LLM generation parameters
         # Note: With temperature=0.0, top_p/top_k have no effect (greedy decoding)
         # repeat_penalty=1.0 matches NVIDIA's defaults for Nemotron 3 Nano
-        temperature: float = 0.2
+        temperature: float = 0.01
         repeat_penalty: float = 1.0
 
         first_overall_generated: bool = True
@@ -518,29 +523,104 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
         self.set_model_name("llama-cpp-buffered")
 
         # Enable tool calling for LLM
-        self._tools = [        
-        {
-            "type": "function",
-            "function": {
-                "name": "get_items_by_product_type",
-                "description": "Get the specific items in the Cooler for a product type like beverages.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "item": {
-                            "type": "string",
-                            #"description": "If request is for all items use {\"item\": \"all\"}. If requesting for a specific item use the item name"
-                            "description": "Name of the item in the format {\"item\": \"typeof_item_name_here\"}"
-                        },
-                    }
-                }
-            }
-        },
+        # self._tools = [        
+        # {
+        #     "type": "function",
+        #     "function": {
+        #         "name": "get_items_by_product_type",
+        #         "description": "Get the specific types of items like Coke in the Cooler for a product type like Beverages.",
+        #         "parameters": {
+        #             "type": "object",
+        #             "properties": {
+        #                 "item": {
+        #                     "type": "string",
+        #                     #"description": "If request is for all items use {\"item\": \"all\"}. If requesting for a specific item use the item name"
+        #                     #"description": "Name of the item in the format {\"item\": \"typeof_item_name_here\"}"
+        #                     "description": "Name to request information about like a Beverage type"
+        #                 }                        
+        #             },
+        #             "required": ["item"]
+        #         }
+        #     }
+        # },
+        # {
+        #     "type": "function",
+        #     "function": {
+        #         "name": "get_all_in_cooler",
+        #         "description": "Get all of the types of items in the Cooler e.g. what's in the cooler.",
+        #         "parameters": {
+        #             "type": "object",
+        #             "properties": {},
+        #             "required": []
+        #         }
+        #     }
+        # },
+        # {
+            
+        #     "type": "function",
+        #     "function": {
+        #         "name": "get_item_price",
+        #         "description": "Get the price of a specific item like a Turkey Sandwich",
+        #         "parameters": {
+        #             "type": "object",
+        #             "properties": {
+        #                 "item": {
+        #                     "type": "string",
+        #                     #"description": "Name of the item in the format {\"item\": \"name_here\"}"
+        #                     "description": "Name to request information about like Coffee"
+        #                 }
+        #             },
+        #             "required": ["item"]
+        #         }
+        #     }
+        # },
+        # {
+        #     "type": "function",
+        #     "function": {
+        #         "name": "get_item_ingredients",
+        #         "description": "Get the ingredients of a specific item like a Coke",
+        #         "parameters": {
+        #             "type": "object",
+        #             "properties": {
+        #                 "item": {
+        #                     "type": "string",
+        #                     #"description": "Name of the item in the format {\"item\": \"name_here\"}"
+        #                     "description": "Name to request information about like Coffee"
+        #                 },                        
+        #             },
+        #             "required": ["item"]
+        #         }
+        #     }
+        # }
+
+
+        # # {
+        # #     "type": "function",
+        # #     "function": {
+        # #         "name": "get_item_info",
+        # #         "description": "Get information for an item type like a Beverage.",
+        # #         "parameters": {
+        # #             "type": "object",
+        # #             "properties": {
+        # #                 "location": {
+        # #                     "type": "string",
+        # #                     "description": "The item type to get the information for, in the format Beverage."
+        # #                 },
+        # #             },
+        # #             "required": [
+        # #             "item_type"
+        # #             ]
+        # #         }
+        # #     }
+        # # },
+        # ]    
+
+        self._tools = [                
         {
             "type": "function",
             "function": {
                 "name": "get_all_in_cooler",
-                "description": "Get all of the types of items in the Cooler e.g. what's in the cooler.",
+                "description": "Get the types of items which are in the cooler",
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -549,19 +629,40 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
             }
         },
         {
+            "type": "function",
+            "function": {
+                "name": "get_items_by_product_type",
+                "description": "Get specific items for a given product type like Beverages.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "item": {
+                            "type": "string",
+                            #"description": "If request is for all items use {\"item\": \"all\"}. If requesting for a specific item use the item name"
+                            #"description": "Name of the item in the format {\"item\": \"typeof_item_name_here\"}"
+                            "description": "Name of the type of item like Beverage"
+                        }                        
+                    },
+                    "required": ["item"]
+                }
+            }
+        },
+        {
             
             "type": "function",
             "function": {
                 "name": "get_item_price",
-                "description": "Get the price of the item in the Cooler.",
+                "description": "Get the price of a specific item like a Turkey Sandwich",
                 "parameters": {
-                    "type": "string",
+                    "type": "object",
                     "properties": {
                         "item": {
                             "type": "string",
-                            "description": "Name of the item in the format {\"item\": \"item_name_here\"}"
-                        },
-                    }
+                            #"description": "Name of the item in the format {\"item\": \"name_here\"}"
+                            "description": "Name of the type of item like Beverage"
+                        }
+                    },
+                    "required": ["item"]
                 }
             }
         },
@@ -569,40 +670,21 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
             "type": "function",
             "function": {
                 "name": "get_item_ingredients",
-                "description": "Get the ingredients of the item in the Cooler.",
+                "description": "Get the ingredients of a specific item like a Coke",
                 "parameters": {
-                    "type": "string",
+                    "type": "object",
                     "properties": {
                         "item": {
                             "type": "string",
-                            "description": "Name of the item in the format {\"item\": \"item_name_here\"}"
-                        },
-                    }
+                            #"description": "Name of the item in the format {\"item\": \"name_here\"}"
+                            "description": "Name of the type of item like Beverage"
+                        },                        
+                    },
+                    "required": ["item"]
                 }
             }
         }
-
-
-        # {
-        #     "type": "function",
-        #     "function": {
-        #         "name": "get_item_info",
-        #         "description": "Get information for an item type like a Beverage.",
-        #         "parameters": {
-        #             "type": "object",
-        #             "properties": {
-        #                 "location": {
-        #                     "type": "string",
-        #                     "description": "The item type to get the information for, in the format Beverage."
-        #                 },
-        #             },
-        #             "required": [
-        #             "item_type"
-        #             ]
-        #         }
-        #     }
-        # },
-        ]    
+    ]
 
         self._available_tool_calls = {
             #"get_inventory_info": self.get_inventory_info,
@@ -735,7 +817,7 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
-            content = content.replace('"', '')
+            content = content.replace('"', '\"')
             #prompt_parts.append(f"{role} {content} <|im_end|>")
             json_str += "{"
             json_str += f"\"role\": \"{role}\","
@@ -811,10 +893,19 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
         available = max_tokens - system_tokens
         kept_msgs = []
 
-        # for msg in reversed(other_msgs):
-        #     msg_tokens = self._estimate_tokens(msg)
-        #     kept_msgs.insert(0, msg)
-        #     break  # No more room
+        # DEBUG ONE SINGLE MESSAGE + SYSTEM PROMPT
+        KEEP_MESSAGE_COUNT = 5
+        kept_messages = 0
+        for msg in reversed(other_msgs):
+            msg_tokens = self._estimate_tokens(msg)
+            kept_msgs.insert(0, msg)
+            kept_messages = kept_messages + 1
+            if kept_messages >= KEEP_MESSAGE_COUNT:
+                break  # No more room
+        if system_msg:
+            kept_msgs.insert(0, system_msg)
+
+        return kept_msgs
         
         first_item = True
         for msg in reversed(other_msgs):
@@ -890,11 +981,13 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
         # Trim messages to fit context window, then format
         messages = self._trim_messages_to_fit_context(messages)
         self._prompt = self._format_messages(messages)
-        #print(f"DEUB::::trim_messages_to_fit {messages}")
+        print(f"DEBUG::::trim_messages_to_fit : {messages}")
+        print("")
 
         # Log context for debugging (use OpenAI adapter since llama.cpp uses OpenAI-compatible format)
         adapter = OpenAILLMAdapter()
         logger.debug(f"{self}: Generating chat: {adapter.get_messages_for_logging(context)}")
+        print("")
 
         # Segment limits - first segment uses equal max/hard_max
         max_tokens = self._params.first_segment_max_tokens        
@@ -1098,7 +1191,7 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
                         tools_info = data["choices"][0]["delta"].get("tool_calls")
                         if not tools_info is None:
                             #print(f"*********DEBUG: Collected tool info: \n{tools_info}")
-                            print(f"***{tools_info[0]}\n")
+                            print(f"***DEBUG TOOL INFO: {tools_info[0]}....Tool_info len is > 1? {len(tools_info)}\n")
                             tools_info = tools_info[0] # support only 1 tool call
 
                         if token_text is None:
@@ -1115,21 +1208,22 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
                     if finished_reason == "tool_calls":
                         #tool_name = json_data['message']['tool_calls'][0]['function']['name']
                         #tool_args = json_data['message']['tool_calls'][0]['function']['arguments']
-                        print(f"***Got Tool to call: {tool_name} / {tool_args}")
+                        print(f"***Got Tool to call: {tool_name}::{tool_args}")
                         if tool_name in self._available_tool_calls:
                             print("Calling tool...!")
                             #print(type(tool_args))
-                            print(f"{tool_name} / {tool_args}")
+                            print(f"Calling {tool_name}::{tool_args}")
                             tool_result = self._available_tool_calls[tool_name](str(tool_args))
                             print(f"Done calling tools {tool_result}")
                             
                             # POST with tool call
                             messages = payload["messages"]
-                            messages.append({"role": "assistant", "content": ''})
+                            #messages.append({"role": "assistant", "content": ''})
                             messages.append({
                                 "role": "tool",
                                 #"content": f"Tool result: {json.dumps(tool_result)}"
-                                "content": f"Tool result: {tool_result}. \n Now provide your final answer."
+                                "content": f"{json.dumps(tool_result)}\n\nNow provide your final answer but be sure to use the exact tool results."
+                                #"content": f"Tool result: {tool_result}. \n Now provide your final answer."
                             })
                             #messages.append({
                             #    "role": "user",
@@ -1189,7 +1283,7 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
                                 tool_name = tools_info["function"]["name"]
                                 tool_args = tools_info["function"]["arguments"]
                             else:
-                                print(f"*****DEBUG got tool arg: {tools_info["function"]["arguments"]}")                                
+                                #print(f"*****DEBUG got tool arg: {tools_info["function"]["arguments"]}")                                
                                 tool_args += tools_info["function"]["arguments"]
 
                     #collected_text += data.get("content", "")
@@ -1234,9 +1328,10 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
         json_obj = json.loads(self._prompt)
         #print(f"***OBJ CONV: {json_obj}")
 
+        print(f"DEUB GEN TEXT EMPTY??: {self._generated_text}")
         json_obj.append( {"role": "assistant","content": self._generated_text} )
         full_prompt = json.dumps(json_obj)
-        #print(f"GENERATE: {full_prompt}")
+        print(f"DEBUG GENERATE JSON_STR: {full_prompt}")
 
         # payload = {
         #     "prompt": full_prompt,
@@ -1264,8 +1359,8 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
                 "n_predict": max_tokens,
                 "id_slot": self._params.slot_id,
                 "cache_prompt": True,
-                "temperature": 0.1, #self._params.temperature,
-                "repeat_penalty": self._params.repeat_penalty,
+                "temperature": 0.01, #self._params.temperature,
+                #"repeat_penalty": self._params.repeat_penalty,
                 "stream": True,
                 #"stop": ["<|im_end|>"],
                 "messages": messages,
@@ -1278,8 +1373,8 @@ class LlamaCppBufferedLLMService(LLMService): # (AIService):
                 "n_predict": max_tokens,
                 "id_slot": self._params.slot_id,
                 "cache_prompt": True,
-                "temperature": 0.1, #self._params.temperature,
-                "repeat_penalty": self._params.repeat_penalty,
+                "temperature": 0.01, #self._params.temperature,
+                #"repeat_penalty": self._params.repeat_penalty,
                 "stream": True,
                 #"stop": ["<|im_end|>"],
                 "messages": messages,

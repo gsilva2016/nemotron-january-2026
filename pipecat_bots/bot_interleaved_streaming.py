@@ -216,7 +216,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         {
             "role": "system",
             "content": (
-                "You are an assistant with access to tools."
+                #"You are an assistant with access to tools. When calling a tool be sure to use valid JSON format."
+                "You are an assistant with access to tools. Be sure to not make any mention of using tools in your response."
+                #"Do not change the words from the tool results. For example, do not state drinks instead of beverages"
                 "You give customers information about items in a Cooler. " # which contains Beverages, Sandwiches, and Icecream. "
                 #"Only answer questions related to what you have in the Cooler by using your tool calls."
                 #"Always call a tool when the user asks for information."
